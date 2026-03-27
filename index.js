@@ -9,7 +9,7 @@ app.use(express.json());
 
 const API_KEY = process.env.API_KEY;
 const DEFAULT_MODEL = "gpt-5.4";
-const DEFAULT_EFFORT = "medium";
+const DEFAULT_EFFORT = "low";
 const PORT = process.env.PORT || 3033;
 
 function auth(req, res, next) {

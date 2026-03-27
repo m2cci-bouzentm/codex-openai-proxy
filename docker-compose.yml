@@ -1,11 +1,9 @@
-version: '3.8'
-
 services:
   codex-proxy:
     build: .
     container_name: codex-openai-proxy
     ports:
-      - "3033:3033"
+      - "7391:3033"
     volumes:
       - ~/.codex:/root/.codex:ro
     env_file:
@@ -17,16 +15,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: codex-proxy-tunnel
-    command: tunnel --no-autoupdate run
-    environment:
-      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
-    env_file:
-      - .env
-    restart: unless-stopped
-    depends_on:
-      codex-proxy:
-        condition: service_healthy
