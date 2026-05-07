@@ -8,8 +8,8 @@ app.use(cors());
 app.use(express.json());
 
 const API_KEY = process.env.API_KEY;
-const DEFAULT_MODEL = "gpt-5.4";
-const DEFAULT_EFFORT = "low";
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "gpt-5.4-mini";
+const DEFAULT_EFFORT = process.env.DEFAULT_EFFORT || "medium";
 const PORT = process.env.PORT || 3033;
 
 function auth(req, res, next) {
