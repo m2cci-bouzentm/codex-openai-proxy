@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const { execFile } = require("child_process");
+const { spawn } = require("child_process");
 require("dotenv").config();
 
 const app = express();
@@ -47,10 +47,16 @@ function runCodex(prompt, model, effort) {
       "--full-auto",
     ];
 
-    execFile("codex", args, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-      if (err) return reject(err);
+    const child = spawn("codex", args, { stdio: ["ignore", "pipe", "pipe"], timeout: 300000 });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (d) => (stdout += d));
+    child.stderr.on("data", (d) => (stderr += d));
+    child.on("close", (code) => {
+      if (code !== 0) return reject(new Error(stderr || `codex exited with code ${code}`));
       resolve(stdout.trim());
     });
+    child.on("error", reject);
   });
 }
 
