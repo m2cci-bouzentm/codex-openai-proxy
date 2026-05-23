@@ -44,7 +44,7 @@ function runCodex(prompt, model, effort) {
       "--model", model,
       "-c", `model_reasoning_effort="${effort}"`,
       "--skip-git-repo-check",
-      "--full-auto",
+      "--sandbox", "workspace-write",
     ];
 
     execFile("codex", args, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
