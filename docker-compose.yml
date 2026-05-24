@@ -5,7 +5,7 @@ services:
     ports:
       - "7391:3033"
     volumes:
-      - /home/mohakatalonya10/.codex/auth.json:/root/.codex/auth.json
+      - ${CODEX_AUTH_PATH:-/root/.codex/auth.json}:/root/.codex/auth.json:ro
     env_file:
       - .env
     restart: unless-stopped
