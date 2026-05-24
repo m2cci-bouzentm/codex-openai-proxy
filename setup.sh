@@ -3,22 +3,16 @@ set -e
 
 echo "=== Codex OpenAI Proxy Setup ==="
 
-# Check if codex is installed
-if ! command -v codex &> /dev/null; then
-  echo "Installing codex CLI..."
-  npm install -g @openai/codex
-fi
-
-# Check codex auth
+# Check auth.json
 if [ ! -f ~/.codex/auth.json ]; then
   echo ""
   echo "ERROR: ~/.codex/auth.json not found."
-  echo "Copy it from your local machine:"
+  echo "Run 'codex login' on a machine with a browser, then copy:"
   echo "  scp ~/.codex/auth.json user@this-host:~/.codex/auth.json"
   exit 1
 fi
 
-echo "Codex auth: OK"
+echo "Auth: OK"
 
 # Check .env
 if [ ! -f .env ]; then
