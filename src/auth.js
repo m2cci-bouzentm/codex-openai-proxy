@@ -11,15 +11,14 @@ function parseJwtPayload(token) {
   return JSON.parse(Buffer.from(token.split(".")[1] + "==", "base64url").toString());
 }
 
+function extractAccountIdFromClaims(claims) {
+  return claims["https://api.openai.com/auth"]?.chatgpt_account_id
+    ?? claims["chatgpt_account_id"];
+}
+
 function extractAccountId(tokens) {
-  for (const key of ["id_token", "access_token"]) {
-    if (!tokens[key]) continue;
-    const claims = parseJwtPayload(tokens[key]);
-    const oa = claims["https://api.openai.com/auth"] || {};
-    const id = oa.chatgpt_account_id || oa.organization_id || oa.organizations?.[0]?.id;
-    if (id) return id;
-  }
-  return "";
+  const idResult = tokens.id_token && extractAccountIdFromClaims(parseJwtPayload(tokens.id_token));
+  return idResult ?? (tokens.access_token && extractAccountIdFromClaims(parseJwtPayload(tokens.access_token)));
 }
 
 function loadFromDisk() {
