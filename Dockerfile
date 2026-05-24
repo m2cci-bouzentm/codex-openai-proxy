@@ -1,20 +1,12 @@
 FROM node:22-slim
 
-RUN apt-get update && apt-get install -y wget curl && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install codex CLI
-RUN npm install -g @openai/codex
-
 WORKDIR /app
 
 COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY index.js ./
-
-# Codex auth mounted at runtime via volume
-RUN mkdir -p /root/.codex
+COPY src/ ./src/
 
 EXPOSE 3033
 
