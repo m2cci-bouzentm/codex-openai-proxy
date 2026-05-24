@@ -18,12 +18,13 @@ function extractAccountId(claims) {
 
 function loadTokens() {
   const raw = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-  const claims = parseJwtPayload(raw.tokens.id_token);
+  const idClaims = parseJwtPayload(raw.tokens.id_token);
+  const accessClaims = parseJwtPayload(raw.tokens.access_token);
   return {
     accessToken: raw.tokens.access_token,
     refreshToken: raw.tokens.refresh_token,
-    accountId: extractAccountId(claims),
-    expiresAt: (claims.exp || 0) * 1000,
+    accountId: extractAccountId(idClaims),
+    expiresAt: (accessClaims.exp || 0) * 1000,
   };
 }
 
