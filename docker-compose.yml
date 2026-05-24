@@ -5,7 +5,8 @@ services:
     ports:
       - "7391:3033"
     volumes:
-      - ${CODEX_AUTH_PATH:-/root/.codex/auth.json}:/root/.codex/auth.json
+      - ${CODEX_PROXY_DATA:-/root/.codex-proxy}:/root/.codex-proxy
+      - ${CODEX_CLI_AUTH:-/root/.codex/auth.json}:/root/.codex/auth.json:ro
     env_file:
       - .env
     restart: unless-stopped

@@ -1,10 +1,10 @@
-const os = require("os");
-const { getAuth } = require("./auth");
+import os from "os";
+import { getAuth, type AuthResult } from "./auth";
 
 const CODEX_API = "https://chatgpt.com/backend-api/codex/responses";
 const USER_AGENT = `codex-proxy/1.0.0 (${process.platform} ${os.release()}; ${process.arch})`;
 
-function buildHeaders(auth, sessionId) {
+function buildHeaders(auth: AuthResult, sessionId: string): Record<string, string> {
   return {
     "Authorization": `Bearer ${auth.accessToken}`,
     "ChatGPT-Account-Id": auth.accountId,
@@ -16,8 +16,13 @@ function buildHeaders(auth, sessionId) {
   };
 }
 
-function convertMessages(messages) {
-  const input = [];
+interface Message {
+  role: string;
+  content: string | Array<{ type: string; text?: string }>;
+}
+
+function convertMessages(messages: Message[]): { instructions: string; input: Message[] } {
+  const input: Message[] = [];
   let instructions = "You are a helpful assistant.";
 
   for (const m of messages) {
@@ -37,7 +42,7 @@ function convertMessages(messages) {
   return { instructions, input };
 }
 
-function parseSSE(body) {
+function parseSSE(body: string): string {
   let content = "";
   for (const line of body.split("\n")) {
     if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
@@ -49,7 +54,7 @@ function parseSSE(body) {
   return content;
 }
 
-async function createCompletion(messages, model) {
+export async function createCompletion(messages: Message[], model: string): Promise<string> {
   const auth = await getAuth();
   const { instructions, input } = convertMessages(messages);
 
@@ -66,5 +71,3 @@ async function createCompletion(messages, model) {
 
   return parseSSE(await resp.text());
 }
-
-module.exports = { createCompletion };

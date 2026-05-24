@@ -3,7 +3,7 @@ set -e
 
 echo "=== Codex OpenAI Proxy Setup ==="
 
-# Check auth.json
+# Check codex CLI auth (used as initial seed)
 if [ ! -f ~/.codex/auth.json ]; then
   echo ""
   echo "ERROR: ~/.codex/auth.json not found."
@@ -12,7 +12,7 @@ if [ ! -f ~/.codex/auth.json ]; then
   exit 1
 fi
 
-echo "Auth: OK"
+echo "Codex CLI auth: OK (will seed on first run)"
 
 # Check .env
 if [ ! -f .env ]; then
@@ -24,8 +24,10 @@ else
   echo ".env: OK"
 fi
 
-# Install deps
-npm install --omit=dev
+# Install deps and build
+npm install
+npm run build
 
 echo ""
 echo "=== Ready! Run: npm start ==="
+echo "Auth will be stored in ~/.codex-proxy/auth.json (separate from codex CLI)"
