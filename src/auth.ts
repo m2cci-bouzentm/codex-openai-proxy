@@ -1,4 +1,5 @@
 import * as storage from "./storage";
+import { extractAccountId } from "./jwt";
 
 const ISSUER = "https://auth.openai.com";
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -48,7 +49,7 @@ export async function getAuth(): Promise<AuthResult> {
         access: tokens.access_token,
         refresh: tokens.refresh_token || currentAuth!.refresh,
         expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
-        accountId: storage.extractAccountId(tokens) || currentAuth!.accountId,
+        accountId: extractAccountId(tokens) || currentAuth!.accountId,
       };
       storage.write(currentAuth);
     })

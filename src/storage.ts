@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { parsePayload, extractAccountId } from "./jwt";
 
 const AUTH_DIR = process.env.CODEX_PROXY_HOME || path.join(os.homedir(), ".codex-proxy");
 export const AUTH_FILE = path.join(AUTH_DIR, "auth.json");
@@ -22,20 +23,6 @@ interface CodexCliAuth {
   };
 }
 
-function parseJwtPayload(token: string): Record<string, unknown> {
-  return JSON.parse(Buffer.from(token.split(".")[1] + "==", "base64url").toString());
-}
-
-function extractAccountIdFromClaims(claims: Record<string, unknown>): string | undefined {
-  const oa = claims["https://api.openai.com/auth"] as Record<string, unknown> | undefined;
-  return (oa?.chatgpt_account_id as string) ?? (claims["chatgpt_account_id"] as string);
-}
-
-export function extractAccountId(tokens: { id_token?: string; access_token?: string }): string | undefined {
-  const idResult = tokens.id_token && extractAccountIdFromClaims(parseJwtPayload(tokens.id_token));
-  return idResult ?? (tokens.access_token && extractAccountIdFromClaims(parseJwtPayload(tokens.access_token))) ?? undefined;
-}
-
 export function read(): OAuthEntry | null {
   if (!fs.existsSync(AUTH_FILE)) return null;
   return JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
@@ -48,7 +35,7 @@ export function write(entry: OAuthEntry) {
 
 export function seedFromCodexCli(): OAuthEntry {
   const raw: CodexCliAuth = JSON.parse(fs.readFileSync(CODEX_CLI_AUTH, "utf-8"));
-  const accessClaims = parseJwtPayload(raw.tokens.access_token);
+  const accessClaims = parsePayload(raw.tokens.access_token);
   const entry: OAuthEntry = {
     type: "oauth",
     access: raw.tokens.access_token,
