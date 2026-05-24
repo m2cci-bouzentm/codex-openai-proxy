@@ -58,34 +58,29 @@ let currentAuth = null;
 let refreshPromise = null;
 
 async function getAuth() {
-  if (!currentAuth) {
-    currentAuth = loadFromDisk();
-  }
+  currentAuth ??= loadFromDisk();
 
-  if (!currentAuth.access || currentAuth.expires < Date.now()) {
-    if (!refreshPromise) {
-      refreshPromise = refreshAccessToken(currentAuth.refresh)
-        .then((tokens) => {
-          const accountId = extractAccountId(tokens) || currentAuth.accountId;
-          persistToDisk(tokens);
-          currentAuth = {
-            access: tokens.access_token,
-            refresh: tokens.refresh_token || currentAuth.refresh,
-            accountId,
-            expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
-          };
-          return currentAuth;
-        })
-        .finally(() => { refreshPromise = null; });
-    }
-    await refreshPromise;
-  }
+  const needsRefresh = !currentAuth.access || currentAuth.expires < Date.now();
+  if (!needsRefresh) return formatAuth(currentAuth);
 
-  return {
-    accessToken: currentAuth.access,
-    refreshToken: currentAuth.refresh,
-    accountId: currentAuth.accountId,
-  };
+  refreshPromise ??= refreshAccessToken(currentAuth.refresh)
+    .then((tokens) => {
+      persistToDisk(tokens);
+      currentAuth = {
+        access: tokens.access_token,
+        refresh: tokens.refresh_token || currentAuth.refresh,
+        accountId: extractAccountId(tokens) || currentAuth.accountId,
+        expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
+      };
+    })
+    .finally(() => { refreshPromise = null; });
+
+  await refreshPromise;
+  return formatAuth(currentAuth);
+}
+
+function formatAuth(auth) {
+  return { accessToken: auth.access, refreshToken: auth.refresh, accountId: auth.accountId };
 }
 
 module.exports = { getAuth, AUTH_FILE };
