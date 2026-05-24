@@ -1,0 +1,17 @@
+services:
+  codex-proxy:
+    build: .
+    container_name: codex-openai-proxy
+    ports:
+      - "7391:3033"
+    volumes:
+      - ${CODEX_AUTH_PATH:-/root/.codex/auth.json}:/root/.codex/auth.json:ro
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3033/health').then(r=>{process.exit(r.ok?0:1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
