@@ -1,7 +1,9 @@
 const express = require("express");
 const cors = require("cors");
-const { spawn } = require("child_process");
 require("dotenv").config();
+
+const { createCompletion } = require("./src/codex");
+const { AUTH_FILE } = require("./src/auth");
 
 const app = express();
 app.use(cors());
@@ -9,7 +11,6 @@ app.use(express.json());
 
 const API_KEY = process.env.API_KEY;
 const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "gpt-5.4-mini";
-const DEFAULT_EFFORT = process.env.DEFAULT_EFFORT || "medium";
 const PORT = process.env.PORT || 3033;
 
 function auth(req, res, next) {
@@ -20,80 +21,33 @@ function auth(req, res, next) {
   next();
 }
 
-function messagesToPrompt(messages) {
-  return messages
-    .map((m) => {
-      if (typeof m.content === "string") return `${m.role}: ${m.content}`;
-      if (Array.isArray(m.content)) {
-        const text = m.content
-          .filter((c) => c.type === "text")
-          .map((c) => c.text)
-          .join("\n");
-        return `${m.role}: ${text}`;
-      }
-      return "";
-    })
-    .join("\n\n");
-}
-
-function runCodex(prompt, model, effort) {
-  return new Promise((resolve, reject) => {
-    const args = [
-      "exec",
-      prompt,
-      "--model", model,
-      "-c", `model_reasoning_effort="${effort}"`,
-      "--skip-git-repo-check",
-      "--full-auto",
-    ];
-
-    const child = spawn("codex", args, { stdio: ["ignore", "pipe", "pipe"], timeout: 300000 });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d) => (stdout += d));
-    child.stderr.on("data", (d) => (stderr += d));
-    child.on("close", (code) => {
-      if (code !== 0) return reject(new Error(stderr || `codex exited with code ${code}`));
-      resolve(stdout.trim());
-    });
-    child.on("error", reject);
-  });
-}
-
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
 app.post("/v1/chat/completions", auth, async (req, res) => {
-  const { messages, model, reasoning_effort } = req.body;
+  const { messages, model } = req.body;
 
   if (!messages || !messages.length) {
     return res.status(400).json({ error: { message: "messages is required", type: "invalid_request" } });
   }
 
-  const prompt = messagesToPrompt(messages);
-  const useModel = model || DEFAULT_MODEL;
-  const effort = reasoning_effort || DEFAULT_EFFORT;
-
   try {
-    const content = await runCodex(prompt, useModel, effort);
+    const content = await createCompletion(messages, model || DEFAULT_MODEL);
 
     res.json({
       id: `chatcmpl-${Date.now()}`,
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
-      model: useModel,
-      choices: [
-        {
-          index: 0,
-          message: { role: "assistant", content },
-          finish_reason: "stop",
-        },
-      ],
+      model: model || DEFAULT_MODEL,
+      choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
       usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
     });
   } catch (err) {
-    console.error("codex exec failed:", err.message);
-    res.status(500).json({ error: { message: "Codex execution failed: " + err.message, type: "server_error" } });
+    console.error("request failed:", err.message);
+    res.status(500).json({ error: { message: err.message, type: "server_error" } });
   }
 });
 
-app.listen(PORT, () => console.log(`codex-openai-proxy listening on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`codex-proxy listening on :${PORT}`);
+  console.log(`auth: ${AUTH_FILE}`);
+});
