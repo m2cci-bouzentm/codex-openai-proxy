@@ -11,24 +11,29 @@ function parseJwtPayload(token) {
   return JSON.parse(Buffer.from(token.split(".")[1] + "==", "base64url").toString());
 }
 
-function extractAccountId(claims) {
-  const oa = claims["https://api.openai.com/auth"] || {};
-  return oa.chatgpt_account_id || oa.organization_id || (oa.organizations?.[0]?.id) || "";
+function extractAccountId(tokens) {
+  for (const key of ["id_token", "access_token"]) {
+    if (!tokens[key]) continue;
+    const claims = parseJwtPayload(tokens[key]);
+    const oa = claims["https://api.openai.com/auth"] || {};
+    const id = oa.chatgpt_account_id || oa.organization_id || oa.organizations?.[0]?.id;
+    if (id) return id;
+  }
+  return "";
 }
 
-function loadTokens() {
+function loadFromDisk() {
   const raw = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-  const idClaims = parseJwtPayload(raw.tokens.id_token);
   const accessClaims = parseJwtPayload(raw.tokens.access_token);
   return {
-    accessToken: raw.tokens.access_token,
-    refreshToken: raw.tokens.refresh_token,
-    accountId: extractAccountId(idClaims),
-    expiresAt: (accessClaims.exp || 0) * 1000,
+    access: raw.tokens.access_token,
+    refresh: raw.tokens.refresh_token,
+    accountId: extractAccountId(raw.tokens),
+    expires: (accessClaims.exp || 0) * 1000,
   };
 }
 
-function persistTokens(tokens) {
+function persistToDisk(tokens) {
   const raw = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
   raw.tokens.id_token = tokens.id_token;
   raw.tokens.access_token = tokens.access_token;
@@ -36,32 +41,52 @@ function persistTokens(tokens) {
   fs.writeFileSync(AUTH_FILE, JSON.stringify(raw, null, 2));
 }
 
-async function refreshTokens(refreshToken) {
+async function refreshAccessToken(refreshToken) {
   const resp = await fetch(TOKEN_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ client_id: CLIENT_ID, grant_type: "refresh_token", refresh_token: refreshToken }),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: CLIENT_ID,
+    }).toString(),
   });
   if (!resp.ok) throw new Error(`Token refresh failed: ${resp.status}`);
   return resp.json();
 }
 
-let cached = null;
+let currentAuth = null;
 let refreshPromise = null;
 
 async function getAuth() {
-  if (!cached) cached = loadTokens();
-  if (Date.now() < cached.expiresAt - 60_000) return cached;
-  if (refreshPromise) return refreshPromise;
+  if (!currentAuth) {
+    currentAuth = loadFromDisk();
+  }
 
-  refreshPromise = (async () => {
-    const tokens = await refreshTokens(cached.refreshToken);
-    persistTokens(tokens);
-    cached = loadTokens();
-    return cached;
-  })().finally(() => { refreshPromise = null; });
+  if (!currentAuth.access || currentAuth.expires < Date.now()) {
+    if (!refreshPromise) {
+      refreshPromise = refreshAccessToken(currentAuth.refresh)
+        .then((tokens) => {
+          const accountId = extractAccountId(tokens) || currentAuth.accountId;
+          persistToDisk(tokens);
+          currentAuth = {
+            access: tokens.access_token,
+            refresh: tokens.refresh_token || currentAuth.refresh,
+            accountId,
+            expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
+          };
+          return currentAuth;
+        })
+        .finally(() => { refreshPromise = null; });
+    }
+    await refreshPromise;
+  }
 
-  return refreshPromise;
+  return {
+    accessToken: currentAuth.access,
+    refreshToken: currentAuth.refresh,
+    accountId: currentAuth.accountId,
+  };
 }
 
 module.exports = { getAuth, AUTH_FILE };
