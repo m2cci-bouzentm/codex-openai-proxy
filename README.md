@@ -8,7 +8,7 @@ OpenAI-compatible API proxy that routes through your ChatGPT subscription (Plus/
 
 ```bash
 codex login
-scp -i ~/.ssh/id_ed25519_devops ~/.codex/auth.json ubuntu@51.255.202.75:~/.config/codex/auth.json
+scp -i ~/.ssh/id_ed25519_devops ~/.codex/auth.json ubuntu@51.255.202.75:~/.codex/auth.json
 rm ~/.codex/auth.json   # one token, one machine — avoid revocation
 ```
 

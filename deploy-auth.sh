@@ -18,8 +18,8 @@ echo "[2/4] Uploading auth to VPS..."
 # Extract user@host from ssh command for scp
 REMOTE=$(echo "$SSH_CMD" | grep -oE '[^ ]+@[^ ]+')
 SSH_OPTS=$(echo "$SSH_CMD" | sed "s|ssh ||; s|$REMOTE||")
-$SSH_CMD "mkdir -p ~/.config/codex"
-scp $SSH_OPTS "$LOCAL_AUTH" "$REMOTE:~/.config/codex/auth.json"
+$SSH_CMD "mkdir -p ~/.codex"
+scp $SSH_OPTS "$LOCAL_AUTH" "$REMOTE:~/.codex/auth.json"
 
 echo "[3/4] Removing local token..."
 rm "$LOCAL_AUTH"
