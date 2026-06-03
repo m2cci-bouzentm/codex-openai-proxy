@@ -4,22 +4,24 @@ OpenAI-compatible API proxy that routes through your ChatGPT subscription (Plus/
 
 ## Setup
 
-**1. Auth** — login locally, copy token to VPS:
+**1. Get auth credentials** — login locally, copy to VPS, delete local copy:
 
 ```bash
 codex login
-scp -i ~/.ssh/id_ed25519_devops ~/.codex/auth.json ubuntu@51.255.202.75:~/.codex/auth.json
+scp ~/.codex/auth.json your-vps:~/.codex/auth.json
 rm ~/.codex/auth.json   # one token, one machine — avoid revocation
 ```
 
-**2. Build and run** on VPS:
+**2. Configure and start** on VPS:
 
 ```bash
 cp .env.example .env    # set API_KEY
 docker compose up -d --build
 ```
 
-**3. Re-auth** — repeat step 1 when tokens expire, then `docker restart codex-openai-proxy`.
+On first start, the proxy seeds from `~/.codex/auth.json` and writes its own copy to `~/.codex-proxy/auth.json`. From then on, it manages token refresh automatically — the seed file is never read again.
+
+**Re-auth** — only needed if the refresh token dies. Copy a fresh `auth.json` to VPS, then `rm -rf ~/.codex-proxy && docker restart codex-openai-proxy` to force re-seed.
 
 ## API
 

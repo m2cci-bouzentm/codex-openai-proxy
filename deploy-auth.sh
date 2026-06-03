@@ -6,7 +6,7 @@ LOCAL_AUTH="$HOME/.codex/auth.json"
 
 echo "=== Codex Proxy Auth Deploy ==="
 
-echo "[1/4] Logging into Codex CLI..."
+echo "[1/3] Logging into Codex CLI..."
 codex login
 
 if [ ! -f "$LOCAL_AUTH" ]; then
@@ -14,20 +14,13 @@ if [ ! -f "$LOCAL_AUTH" ]; then
   exit 1
 fi
 
-echo "[2/4] Uploading auth to VPS..."
-# Extract user@host from ssh command for scp
+echo "[2/3] Uploading auth to VPS..."
 REMOTE=$(echo "$SSH_CMD" | grep -oE '[^ ]+@[^ ]+')
 SSH_OPTS=$(echo "$SSH_CMD" | sed "s|ssh ||; s|$REMOTE||")
 $SSH_CMD "mkdir -p ~/.codex"
 scp $SSH_OPTS "$LOCAL_AUTH" "$REMOTE:~/.codex/auth.json"
 
-echo "[3/4] Removing local token..."
+echo "[3/3] Removing local token..."
 rm "$LOCAL_AUTH"
 
-echo "[4/4] Restarting container..."
-$SSH_CMD "rm -rf ~/.codex-proxy && docker restart codex-openai-proxy"
-
-sleep 3
-$SSH_CMD "curl -sf http://localhost:7391/health" && echo "Health: OK" || echo "Health: FAILED"
-
-echo "=== Done ==="
+echo "=== Done. Start container with: docker compose up -d ==="
