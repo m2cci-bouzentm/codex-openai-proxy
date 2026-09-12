@@ -1,5 +1,6 @@
 import os from "os";
 import { getAuth, type AuthResult } from "./auth";
+import type { ReasoningEffort } from "./models";
 
 const CODEX_API = "https://chatgpt.com/backend-api/codex/responses";
 const USER_AGENT = `codex-proxy/1.0.0 (${process.platform} ${os.release()}; ${process.arch})`;
@@ -54,14 +55,21 @@ function parseSSE(body: string): string {
   return content;
 }
 
-export async function createCompletion(messages: Message[], model: string): Promise<string> {
+export async function createCompletion(messages: Message[], model: string, effort: ReasoningEffort): Promise<string> {
   const auth = await getAuth();
   const { instructions, input } = convertMessages(messages);
 
   const resp = await fetch(CODEX_API, {
     method: "POST",
     headers: buildHeaders(auth, crypto.randomUUID()),
-    body: JSON.stringify({ model, instructions, input, stream: true, store: false }),
+    body: JSON.stringify({
+      model,
+      instructions,
+      input,
+      reasoning: { effort },
+      stream: true,
+      store: false,
+    }),
   });
 
   if (!resp.ok) {

@@ -4,13 +4,15 @@ import "dotenv/config";
 
 import { createCompletion } from "./codex";
 import { AUTH_FILE } from "./auth";
+import { MODELS, resolveModel, type ReasoningEffort } from "./models";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const API_KEY = process.env.API_KEY;
-const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "gpt-5.4-mini";
+const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "gpt-5.6-luna";
+const REASONING_EFFORT = (process.env.REASONING_EFFORT || "high") as ReasoningEffort;
 const PORT = process.env.PORT || 3033;
 
 function auth(req: express.Request, res: express.Response, next: express.NextFunction) {
@@ -24,22 +26,33 @@ function auth(req: express.Request, res: express.Response, next: express.NextFun
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
+app.get("/v1/models", (_req, res) => {
+  res.json({
+    object: "list",
+    data: MODELS.map((id) => ({ id, object: "model", created: 1700000000, owned_by: "openai" })),
+  });
+});
+
 app.post("/v1/chat/completions", auth, async (req, res) => {
-  const { messages, model } = req.body;
+  const { messages, model, reasoning_effort } = req.body;
 
   if (!messages || !messages.length) {
     res.status(400).json({ error: { message: "messages is required", type: "invalid_request" } });
     return;
   }
 
+  const requestedModel: string = model || DEFAULT_MODEL;
+  const resolvedModel = resolveModel(requestedModel);
+  const effort: ReasoningEffort = reasoning_effort || REASONING_EFFORT;
+
   try {
-    const content = await createCompletion(messages, model || DEFAULT_MODEL);
+    const content = await createCompletion(messages, resolvedModel, effort);
 
     res.json({
       id: `chatcmpl-${Date.now()}`,
       object: "chat.completion",
       created: Math.floor(Date.now() / 1000),
-      model: model || DEFAULT_MODEL,
+      model: resolvedModel,
       choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
       usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
     });
@@ -53,4 +66,5 @@ app.post("/v1/chat/completions", auth, async (req, res) => {
 app.listen(PORT, () => {
   console.log(`codex-proxy listening on :${PORT}`);
   console.log(`auth: ${AUTH_FILE}`);
+  console.log(`default model: ${DEFAULT_MODEL} (effort ${REASONING_EFFORT})`);
 });
