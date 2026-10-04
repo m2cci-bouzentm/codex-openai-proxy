@@ -128,8 +128,10 @@ It neither deploys nor modifies permanent Claude Code config.
 
 - System/developer instructions become native `instructions`.
 - Function schemas, tool choices, parallel calls, call IDs/results become Responses
-  function items. Ajv validates returned/historical arguments before exposing
-  executable calls. The proxy never executes tools.
+  function items. Ajv validates newly returned arguments before exposing
+  executable calls. Completed historical calls keep structural/JSON/ID/pairing
+  validation without requiring their tools to remain in the current registry.
+  The proxy never executes tools.
 - User text/images become `input_text`/`input_image`; image URLs are not fetched locally.
 - Encrypted reasoning context returns as `reasoning_details`; replay it unchanged
   with assistant history in tool loops. Refusals preserve diagnostics without tools.

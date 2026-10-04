@@ -25,7 +25,9 @@ export function prepareChat(body: any) {
   }
   for (const message of body.messages) {
     if (["system","developer"].includes(message.role)) {
-      if(typeof message.content !== "string") throw new Error("Instructions must be text"); instructions.push(message.content); continue;
+      let text=message.content;
+      if(Array.isArray(text))text=text.map((part:any)=>{if(part.type!=="text" || typeof part.text!=="string")throw new Error("Instructions must be text");return part.text;}).join("\n");
+      if(typeof text!=="string")throw new Error("Instructions must be text");instructions.push(text);continue;
     }
     if(message.role === "tool") {
       if(!pending.delete(message.tool_call_id)) throw new Error("Tool result without matching call");
@@ -40,16 +42,16 @@ export function prepareChat(body: any) {
     }
     if(message.content) {
       const content = typeof message.content === "string" ? [{type:message.role === "assistant" ? "output_text" : "input_text",text:message.content}] : message.content.map((part: any) => {
-        if(part.type === "text") return {type:"input_text",text:part.text};
+        if(part.type === "text") return {type:message.role === "assistant" ? "output_text" : "input_text",text:part.text};
         if(part.type === "image_url" && message.role === "user") return {type:"input_image",image_url:part.image_url.url,detail:part.image_url.detail ?? "auto"};
         throw new Error("Unsupported content part");
       });
       input.push({role:message.role,content});
     }
     for(const call of message.tool_calls ?? []) {
-      if(message.role !== "assistant" || !call.id || seen.has(call.id) || !validators.has(call.function?.name)) throw new Error("Invalid historical tool call");
+      if(message.role !== "assistant" || typeof call.id!=="string" || !call.id || seen.has(call.id) || call.type!=="function" || typeof call.function?.name!=="string" || !call.function.name) throw new Error("Invalid historical tool call");
       const args=JSON.parse(call.function.arguments);
-      if(!validators.get(call.function.name)!(args)) throw new Error("Invalid historical arguments");
+      if(!args || typeof args!=="object" || Array.isArray(args))throw new Error("Invalid historical arguments");
       seen.add(call.id);pending.add(call.id);
       input.push({type:"function_call",call_id:call.id,name:call.function.name,arguments:call.function.arguments});
     }
@@ -77,7 +79,7 @@ export async function chatCompletion(req: Request, res: Response) {
   try {
     const response=await upstream("/codex/responses",prepared.native,req,scope.signal,prepared.native.prompt_cache_key);
     if(!response.ok) { res.status(response.status).type("application/json").send(await boundedBody(response));return; }
-    const raw=(await boundedBody(response)).toString(); let completed: any; const streamedItems: any[] = [];
+    const raw=(await boundedBody(response,scope.reset)).toString(); let completed: any; const streamedItems: any[] = [];
     if(response.headers.get("content-type")?.includes("application/json")) completed=JSON.parse(raw);
     else for(const line of raw.split(/\r?\n/)) if(line.startsWith("data:")) {
       const data=line.slice(5).trim(); if(!data || data==="[DONE]")continue;
