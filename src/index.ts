@@ -1,70 +1,47 @@
 import express from "express";
 import cors from "cors";
 import "dotenv/config";
-
-import { createCompletion } from "./codex";
 import { AUTH_FILE } from "./auth";
-import { MODELS, resolveModel, type ReasoningEffort } from "./models";
+import { nativeGateway, requestScope, upstream, boundedBody } from "./gateway";
+import { chatCompletion } from "./openai";
 
-const app = express();
+export const app = express();
 app.use(cors());
-app.use(express.json());
-
-const API_KEY = process.env.API_KEY;
-const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "gpt-5.6-luna";
-const REASONING_EFFORT = (process.env.REASONING_EFFORT || "high") as ReasoningEffort;
-const PORT = process.env.PORT || 3033;
-
-function auth(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const header = req.headers.authorization;
-  if (!header || header !== `Bearer ${API_KEY}`) {
-    res.status(401).json({ error: { message: "Invalid API key", type: "auth_error" } });
-    return;
-  }
+app.use(express.json({limit:"32mb"}));
+function auth(req: express.Request,res: express.Response,next: express.NextFunction) {
+  const key=process.env.API_KEY;
+  if(!key) {res.status(503).json({error:{message:"Proxy API key not configured",type:"configuration_error"}});return;}
+  if(req.headers.authorization !== `Bearer ${key}`) {res.status(401).json({error:{message:"Invalid API key",type:"auth_error"}});return;}
   next();
 }
-
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
-
-app.get("/v1/models", (_req, res) => {
-  res.json({
-    object: "list",
-    data: MODELS.map((id) => ({ id, object: "model", created: 1700000000, owned_by: "openai" })),
-  });
-});
-
-app.post("/v1/chat/completions", auth, async (req, res) => {
-  const { messages, model, reasoning_effort } = req.body;
-
-  if (!messages || !messages.length) {
-    res.status(400).json({ error: { message: "messages is required", type: "invalid_request" } });
-    return;
-  }
-
-  const requestedModel: string = model || DEFAULT_MODEL;
-  const resolvedModel = resolveModel(requestedModel);
-  const effort: ReasoningEffort = reasoning_effort || REASONING_EFFORT;
-
+app.get("/health",(_req,res)=>res.json({status:"ok"}));
+app.get("/openai/v1/models",auth,async(req,res)=>{
+  const scope=requestScope(res);
   try {
-    const content = await createCompletion(messages, resolvedModel, effort);
-
-    res.json({
-      id: `chatcmpl-${Date.now()}`,
-      object: "chat.completion",
-      created: Math.floor(Date.now() / 1000),
-      model: resolvedModel,
-      choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("request failed:", message);
-    res.status(500).json({ error: { message, type: "server_error" } });
-  }
+    const query=new URLSearchParams(req.query as Record<string,string>);
+    if(!query.has("client_version"))query.set("client_version",process.env.CODEX_CLIENT_VERSION || "0.157.1");
+    const response=await upstream("/codex/models?"+query,undefined,req,scope.signal);
+    const buffer=await boundedBody(response);
+    if(!response.ok){res.status(response.status).type("application/json").send(buffer);return;}
+    const payload=JSON.parse(buffer.toString());
+    if(!Array.isArray(payload.models))throw new Error("Invalid model catalog");
+    res.json({object:"list",data:payload.models.map((m:any)=>({id:m.slug,object:"model",owned_by:"openai",context_length:m.context_window,name:m.display_name}))});
+  }catch{scope.abort();if(!res.destroyed)res.status(502).json({error:{message:"Model discovery failed",type:"upstream_error"}});}
+  finally{scope.dispose();}
 });
-
-app.listen(PORT, () => {
-  console.log(`codex-proxy listening on :${PORT}`);
-  console.log(`auth: ${AUTH_FILE}`);
-  console.log(`default model: ${DEFAULT_MODEL} (effort ${REASONING_EFFORT})`);
-});
+app.post("/openai/v1/chat/completions",auth,chatCompletion);
+const native=express.Router();
+native.post(["/responses","/responses/compact"],auth,nativeGateway);
+native.get(["/models","/usage"],auth,nativeGateway);
+app.use("/codex",native);
+// Responses API consumers can use the same native transport under the OpenAI prefix.
+app.post("/openai/v1/responses",auth,(req,res)=>{req.url="/responses";void nativeGateway(req,res);});
+app.use(((err: any,_req: express.Request,res: express.Response,_next: express.NextFunction)=>{
+  res.status(err.type === "entity.too.large" ? 413 : 400).json({error:{type:"invalid_request_error",message:"Invalid or oversized request body"}});
+}) as express.ErrorRequestHandler);
+if(require.main === module) {
+  app.listen(process.env.PORT || 3033,()=>{
+    console.log(`codex-proxy listening on :${process.env.PORT || 3033}`);
+    console.log(`auth: ${AUTH_FILE}`);
+  });
+}
