@@ -29,9 +29,10 @@ export async function upstream(path: string, body: unknown, req: Request, signal
   return fetch(base.replace(/\/$/, "") + path, { method: req.method, headers, body: body === undefined ? undefined : JSON.stringify(body), signal, redirect: "error" });
 }
 
-export async function boundedBody(response: globalThis.Response): Promise<Buffer> {
+export async function boundedBody(response: globalThis.Response,onChunk?:()=>void): Promise<Buffer> {
   const chunks: Buffer[] = []; let size = 0;
   if (response.body) for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+    onChunk?.();
     size += chunk.length; if (size > MAX_BYTES) throw new Error("Upstream response limit exceeded"); chunks.push(Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
