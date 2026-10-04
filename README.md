@@ -71,6 +71,59 @@ curl -f 'https://your-host/codex/models?client_version=0.157.1' \
 Refresh the catalog after CLI/model updates. Accepted but unadvertised model names
 can still trigger Codex's fallback metadata warning.
 
+## Anthropic-compatible clients (Claude Code)
+
+Claude Code can use Codex models through an Anthropic Messages protocol adapter.
+This does not serve Claude models or promise the full Anthropic API surface.
+
+- POST `/anthropic/v1/messages`: text/images, custom tools and tool results,
+  incremental Anthropic SSE, native error envelopes and upstream usage.
+- GET `/anthropic/v1/models`: live Codex catalog in Anthropic list format.
+  Codex does not expose model creation dates; `created_at` uses the Unix epoch
+  as an explicit unknown-date sentinel, not a real model creation date.
+- POST `/anthropic/v1/messages/count_tokens`: 501, because exact token counting
+  is not available from this Codex backend. No approximate count is advertised.
+- Authentication accepts `x-api-key` or Bearer proxy key. Server OAuth stays private.
+
+Example isolated client invocation (replace placeholders; do not reuse upstream
+OAuth as the proxy key):
+
+```bash
+ANTHROPIC_BASE_URL=https://your-host/anthropic \
+ANTHROPIC_API_KEY="$PROXY_KEY" MAX_THINKING_TOKENS=0 \
+claude --bare --model YOUR_CODEX_MODEL
+```
+
+Choose an ID from `/anthropic/v1/models`. Set `ANTHROPIC_DEFAULT_SONNET_MODEL`,
+`ANTHROPIC_DEFAULT_HAIKU_MODEL` and `ANTHROPIC_DEFAULT_OPUS_MODEL` to valid Codex
+IDs if the client uses model aliases or secondary calls. Clear conflicting
+`CLAUDE_CODE_OAUTH_TOKEN`/`ANTHROPIC_AUTH_TOKEN` in that client process.
+
+Limitations: Anthropic thinking/signatures, hosted server tools, documents,
+image-valued tool results, stop sequences, structured-output formats and MCP
+server blocks are unsupported and rejected. `max_tokens` is validated but NOT
+an enforced output limit because this subscription Responses backend rejects
+`max_output_tokens`; sampling controls are not applied. `cache_control` is
+accepted as a hint, but Codex determines cache hits/retention. Usage subtracts
+real cached tokens from Anthropic `input_tokens` to avoid double counting;
+cache creation is reported as zero, not fabricated. Hidden Codex reasoning
+is not returned as Anthropic thinking or preserved through Anthropic history.
+Claude Code may warn about custom models and unsupported auto-mode classifier
+billing; that integration is not implemented. Full interactive/default-plugin
+workflows are not claimed verified.
+
+Real verification:
+
+```bash
+npm test
+python scripts/anthropic-e2e.py --output /tmp/anthropic-codex-e2e.json
+```
+
+Opt-in E2E uses an ephemeral local proxy and isolated Claude Code home. It tests
+live text, incremental SSE, custom tool roundtrip, image recognition, cached
+usage and Claude Code print-mode text plus an observed Bash call/result.
+It neither deploys nor modifies permanent Claude Code config.
+
 ## OpenAI-compatible behavior
 
 - System/developer instructions become native `instructions`.

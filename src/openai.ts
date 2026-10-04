@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import Ajv from "ajv";
+import Ajv2020 from "ajv/dist/2020";
 import type { Request, Response } from "express";
 import { upstream, boundedBody, requestScope } from "./gateway";
 import { resolveModel, type ReasoningEffort } from "./models";
@@ -15,9 +16,12 @@ export function prepareChat(body: any) {
   });
   const validators = new Map<string, ReturnType<Ajv["compile"]>>();
   const ajv = new Ajv({strict:false,validateFormats:false});
+  const ajv2020 = new Ajv2020({strict:false,validateFormats:false});
   for(const tool of tools) {
     if(validators.has(tool.name)) throw new Error("Duplicate tool name");
-    validators.set(tool.name,ajv.compile(tool.parameters ?? {type:"object"}));
+    const schema=tool.parameters ?? {type:"object"};
+    const compiler=schema.$schema === "https://json-schema.org/draft/2020-12/schema" ? ajv2020 : ajv;
+    validators.set(tool.name,compiler.compile(schema));
   }
   for (const message of body.messages) {
     if (["system","developer"].includes(message.role)) {

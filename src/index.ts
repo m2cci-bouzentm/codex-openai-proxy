@@ -4,6 +4,7 @@ import "dotenv/config";
 import { AUTH_FILE } from "./auth";
 import { nativeGateway, requestScope, upstream, boundedBody } from "./gateway";
 import { chatCompletion } from "./openai";
+import { anthropicAuth, anthropicMessages, anthropicModels, anthropicError } from "./anthropic";
 
 export const app = express();
 app.use(cors());
@@ -30,6 +31,9 @@ app.get("/openai/v1/models",auth,async(req,res)=>{
   finally{scope.dispose();}
 });
 app.post("/openai/v1/chat/completions",auth,chatCompletion);
+app.post("/anthropic/v1/messages",anthropicAuth,anthropicMessages);
+app.get("/anthropic/v1/models",anthropicAuth,anthropicModels);
+app.post("/anthropic/v1/messages/count_tokens",anthropicAuth,(_req,res)=>anthropicError(res,501,"api_error","Exact Anthropic token counting is not available for Codex models"));
 const native=express.Router();
 native.post(["/responses","/responses/compact"],auth,nativeGateway);
 native.get(["/models","/usage"],auth,nativeGateway);
@@ -37,6 +41,7 @@ app.use("/codex",native);
 // Responses API consumers can use the same native transport under the OpenAI prefix.
 app.post("/openai/v1/responses",auth,(req,res)=>{req.url="/responses";void nativeGateway(req,res);});
 app.use(((err: any,_req: express.Request,res: express.Response,_next: express.NextFunction)=>{
+  if(_req.path.startsWith("/anthropic/")){anthropicError(res,err.type === "entity.too.large" ? 413 : 400,"invalid_request_error","Invalid or oversized request body");return;}
   res.status(err.type === "entity.too.large" ? 413 : 400).json({error:{type:"invalid_request_error",message:"Invalid or oversized request body"}});
 }) as express.ErrorRequestHandler);
 if(require.main === module) {
