@@ -46,7 +46,8 @@ export function prepareAnthropic(body:any,sessionHeader?:string) {
       else if(block.type==="tool_use" && message.role==="assistant" && typeof block.id==="string" && typeof block.name==="string" && block.input && typeof block.input==="object")
         calls.push({id:block.id,type:"function",function:{name:block.name,arguments:JSON.stringify(block.input)}});
       else if(block.type==="tool_result" && message.role==="user" && typeof block.tool_use_id==="string") {
-        messages.push({role:"tool",tool_call_id:block.tool_use_id,content:block.content===undefined?"":textBlocks(block.content)});
+        const output=block.content===undefined?"":textBlocks(block.content);
+        messages.push({role:"tool",tool_call_id:block.tool_use_id,content:block.is_error===true?`[tool_error]\n${output}`:output});
       } else throw new Error("Unsupported content block");
     }
     if(content.length || calls.length)messages.push({role:message.role,content:message.role==="assistant"?content.map(p=>p.text).join("\n"):content,...(calls.length?{tool_calls:calls}:{})});
@@ -74,20 +75,24 @@ function usage(response:any) {
   const u=response.usage || {};const cached=u.input_tokens_details?.cached_tokens || 0;
   return {input_tokens:Math.max(0,(u.input_tokens || 0)-cached),output_tokens:u.output_tokens || 0,cache_creation_input_tokens:0,cache_read_input_tokens:cached};
 }
+function validateCall(item:any,prepared:ReturnType<typeof prepareAnthropic>,ids:Set<string>) {
+  const input=JSON.parse(item.arguments);const validate=prepared.validators.get(item.name);
+  if(!item.call_id || ids.has(item.call_id) || !validate || !validate(input))throw new Error("Invalid upstream tool call");
+  ids.add(item.call_id);return input;
+}
 function result(response:any,prepared:ReturnType<typeof prepareAnthropic>,items:any[]) {
   const output=response.output?.length?response.output:items;const content:Block[]=[];const ids=new Set<string>();let refused=false;
+  const stopped=response.status==="incomplete" && response.incomplete_details?.reason==="max_output_tokens";
   for(const item of output) {
     if(item.type==="message")for(const part of item.content || []) {
       if(part.type==="output_text")content.push({type:"text",text:part.text});
       if(part.type==="refusal"){content.push({type:"text",text:part.refusal});refused=true;}
     }
-    if(item.type==="function_call") {
-      const input=JSON.parse(item.arguments);const validate=prepared.validators.get(item.name);
-      if(!item.call_id || ids.has(item.call_id) || !validate || !validate(input))throw new Error("Invalid upstream tool call");
-      ids.add(item.call_id);content.push({type:"tool_use",id:item.call_id,name:item.name,input});
+    if(item.type==="function_call" && !stopped) {
+      const input=validateCall(item,prepared,ids);
+      content.push({type:"tool_use",id:item.call_id,name:item.name,input});
     }
   }
-  const stopped=response.status==="incomplete" && response.incomplete_details?.reason==="max_output_tokens";
   if(!stopped && response.status!=="completed")throw new Error("Upstream response failed");
   return {id:response.id,type:"message",role:"assistant",model:prepared.requested,content,stop_reason:stopped?"max_tokens":refused?"refusal":ids.size?"tool_use":"end_turn",stop_sequence:null,usage:usage(response)};
 }
@@ -130,8 +135,13 @@ export async function anthropicMessages(req:Request,res:Response) {
     await emit("content_block_delta",{index:s.index,delta:s.kind==="tool"?{type:"input_json_delta",partial_json:text}:{type:"text_delta",text}});
   };
   const close=async(s:{index:number;closed:boolean})=>{if(!s.closed){s.closed=true;await emit("content_block_stop",{index:s.index});}};
-  const finishItem=async(item:any)=>{
+  const validatedItems=new Set<string>();const streamedCallIds=new Set<string>();
+  const finishItem=async(item:any,incomplete=false)=>{
     if(item.type==="function_call") {
+      if(!incomplete && !validatedItems.has(item.id)) {
+        try{validateCall(item,prepared,streamedCallIds);validatedItems.add(item.id);}
+        catch{return;} // Wait for final status: token-limited partial calls are not executable.
+      }
       const s=await block(item.id,"tool",item);if(!item.arguments.startsWith(s.raw))throw new Error("Inconsistent tool stream");await delta(s,item.arguments.slice(s.raw.length));await close(s);
     }
     if(item.type==="message")for(const [i,p] of (item.content || []).entries()) {
@@ -168,7 +178,7 @@ export async function anthropicMessages(req:Request,res:Response) {
         const message=result(event.response,prepared,items);
         if(!req.body.stream){res.json(message);completed=true;break;}
         await start(event.response);
-        for(const item of event.response.output?.length?event.response.output:items)await finishItem(item);
+        for(const item of event.response.output?.length?event.response.output:items)await finishItem(item,message.stop_reason==="max_tokens");
         for(const s of states.values())await close(s);
         await emit("message_delta",{delta:{stop_reason:message.stop_reason,stop_sequence:null},usage:message.usage});await emit("message_stop",{});res.end();completed=true;break;
       }
@@ -195,7 +205,7 @@ export async function anthropicModels(req:Request,res:Response) {
     if(req.query.before_id){const i=data.findIndex((m:any)=>m.id===req.query.before_id);if(i<0){anthropicError(res,400,"invalid_request_error","Unknown before_id");return;}data=data.slice(0,i);}
     const limit=req.query.limit===undefined?100:Number(req.query.limit);
     if(!Number.isInteger(limit)||limit<1||limit>1000){anthropicError(res,400,"invalid_request_error","Invalid limit");return;}
-    const more=data.length>limit;data=data.slice(0,limit);
+    const more=data.length>limit;data=req.query.before_id?data.slice(-limit):data.slice(0,limit);
     res.json({data,has_more:more,first_id:data[0]?.id || null,last_id:data.at(-1)?.id || null});
   }catch{scope.abort();if(!res.destroyed)anthropicError(res,502,"api_error","Codex model discovery failed");}
   finally{scope.dispose();}
