@@ -2,10 +2,41 @@
 
 ChatGPT/Codex OAuth proxy for OpenAI Chat Completions and Anthropic-compatible clients. Clients use proxy API keys; OAuth/account identity stay server-side.
 
+## Auth & Credential Management (`proxy-auth`)
+
+Credentials live in canonical `/data/auth.json` (configured via `PROXY_AUTH_DIR`).
+Authentication is managed via the CLI executable `proxy-auth` with subcommands `login`, `import`, and `status`.
+
+### Interactive Login
+Run native Codex interactive login inside the container (uses an isolated CLI configuration directory beneath the auth directory):
+```bash
+# Docker Compose interactive device login (default):
+docker compose run --rm codex-proxy proxy-auth login --device
+
+# Or interactive browser login:
+docker compose run --rm codex-proxy proxy-auth login --browser
+```
+
+### Import Credentials
+Import existing native Codex credentials (`{"tokens": {"id_token", "access_token", "refresh_token"}}`) or normalized OAuth credentials (`{"type": "oauth", "access", "refresh", "expires", "accountId"}`):
+```bash
+# Via file mount:
+docker compose run --rm -v $(pwd)/import:/imports:ro codex-proxy proxy-auth import --file /imports/auth.json
+
+# Via stdin:
+cat auth.json | docker compose run --rm -T codex-proxy proxy-auth import -
+```
+
+### Check Status
+Inspect credential presence, method, expiration, and account ID without revealing token secrets:
+```bash
+docker compose run --rm codex-proxy proxy-auth status
+```
+
+The server automatically monitors `/data/auth.json` and hot-reloads updated credentials dynamically without needing a container restart.
+
 ## Setup
 
-Provision server-side `~/.codex/auth.json` using `codex login`. First request copies
-that login into `~/.codex-proxy/auth.json`; source credentials are not deleted.
 Use one central owner for refresh tokens; avoid concurrent independent refresh.
 Never publish credentials. Use HTTPS or private networking for remote access.
 
@@ -16,9 +47,8 @@ cp .env.example .env  # set strong API_KEY
 npm start
 ```
 
-Docker setup remains `docker compose up -d --build`. Internal port: 3033; existing
-compose mapping: 7391. Missing API_KEY fails closed. `/health` is public; all
-protocol endpoints require `Authorization: Bearer <proxy-key>`.
+Docker setup: `docker compose up -d --build`. Internal port: 3033; host mapping: 7391.
+Missing API_KEY fails closed. `/health` is public; all protocol endpoints require `Authorization: Bearer ***`.
 
 ## Protocol endpoints
 

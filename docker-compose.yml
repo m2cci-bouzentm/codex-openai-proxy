@@ -4,9 +4,10 @@ services:
     container_name: codex-openai-proxy
     ports:
       - "7391:3033"
+    environment:
+      - PROXY_AUTH_DIR=/data
     volumes:
-      - ${CODEX_PROXY_DATA:-~/.codex-proxy}:/root/.codex-proxy
-      - ${CODEX_CLI_AUTH:-~/.codex/auth.json}:/root/.codex/auth.json:ro
+      - ${PROXY_AUTH_DIR:-codex-proxy-data}:/data
     env_file:
       - .env
     restart: unless-stopped
@@ -16,3 +17,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+volumes:
+  codex-proxy-data:
