@@ -33,26 +33,23 @@ test('protocol routes centralize auth, preserve native caching/usage and bridge 
   const headers = { 'content-type':'application/json', authorization:'Bearer proxy-test' };
   const post = (path,body,h={}) => fetch(base+path,{method:'POST',headers:{...headers,...h},body:JSON.stringify(body)});
   try {
-    assert.equal((await post('/codex/responses',{model:'test-model',input:[]},{authorization:'Bearer wrong'})).status,401);
+    assert.equal((await post('/openai/v1/chat/completions',{model:'test-model',input:[]},{authorization:'Bearer wrong'})).status,401);
     assert.equal(requests.length,0);
     for(const p of ['/v1/models','/tools/v1/models']) assert.equal((await fetch(base+p)).status,404);
-    const native = { model:'test-model',instructions:'keep',input:[{role:'user',content:[{type:'input_text',text:'hi'}]}],stream:true,store:false,prompt_cache_key:'cache-id',reasoning:{effort:'high'} };
-    const response = await post('/codex/responses',native,{'chatgpt-account-id':'do-not-forward'});
-    assert.equal(response.status,200); const reader=response.body.getReader();
-    assert.match(Buffer.from((await reader.read()).value).toString(),/response.created/);
-    let rest='';for(;;){const r=await reader.read();if(r.done)break;rest+=Buffer.from(r.value).toString();} assert.match(rest,/cached_tokens/);
-    assert.deepEqual(requests[0].body,native);assert.equal(requests[0].headers.authorization,'Bearer central-token');assert.equal(requests[0].headers['chatgpt-account-id'],'central-account');
-    const models=await fetch(base+'/codex/models?client_version=0.157.1',{headers});assert.equal(models.status,200);assert.equal((await models.json()).models[0].slug,'test-model');
+    const completion={model:'test-model',messages:[{role:'user',content:'hi'}],prompt_cache_key:'cache-id'};
+    const response=await post('/openai/v1/chat/completions',completion,{'chatgpt-account-id':'do-not-forward'});
+    assert.equal(response.status,200);assert.equal((await response.json()).usage.prompt_tokens_details.cached_tokens,8);
+    assert.equal(requests[0].body.prompt_cache_key,'cache-id');assert.equal(requests[0].headers.authorization,'Bearer central-token');assert.equal(requests[0].headers['chatgpt-account-id'],'central-account');
     const discovered=await fetch(base+'/openai/v1/models',{headers});assert.equal(discovered.status,200);assert.equal((await discovered.json()).data[0].id,'test-model');
-    const usage=await fetch(base+'/codex/usage',{headers});assert.equal(usage.status,200);assert.equal((await usage.json()).rate_limit.allowed,true);
+
     const body={model:'test-model',messages:[{role:'system',content:'keep system'},{role:'user',content:'hello'}],tools:[{type:'function',function:{name:'echo',parameters:{type:'object',properties:{text:{type:'string'}}}}}]};
     const first=await (await post('/openai/v1/chat/completions',body)).json();assert.equal(first.choices[0].finish_reason,'tool_calls');assert.equal(first.choices[0].message.tool_calls[0].id,'call_1');assert.equal(first.usage.prompt_tokens_details.cached_tokens,8);
     const second=await (await post('/openai/v1/chat/completions',{...body,messages:[...body.messages,first.choices[0].message,{role:'tool',tool_call_id:'call_1',content:'ok'}]})).json();assert.equal(second.choices[0].message.content,'E2E_OK');
     const chats=requests.filter(r=>r.path.includes('responses')&&r.body?.tools?.length);assert.equal(chats[0].headers.session_id,chats[1].headers.session_id);
     const refusal=await (await post('/openai/v1/chat/completions',{...body,model:'refusal'})).json();assert.equal(refusal.choices[0].message.refusal,'Cannot comply');assert.equal(refusal.choices[0].message.tool_calls,undefined);
     const stream=await post('/openai/v1/chat/completions',{...body,stream:true,stream_options:{include_usage:true}});assert.match(await stream.text(),/\[DONE\]/);
-    assert.equal((await post('/codex/responses',{...native,model:'error'})).status,429);
-    assert.equal((await post('/codex/responses',{...native,model:'redirect'})).status,502);
+    assert.equal((await post('/openai/v1/chat/completions',{...completion,model:'error'})).status,429);
+    assert.equal((await post('/openai/v1/chat/completions',{...completion,model:'redirect'})).status,502);
     assert.ok(!requests.some(r=>r.path==='/leak'));
   } finally { server.closeAllConnections();upstream.closeAllConnections();await Promise.all([new Promise(r=>server.close(r)),new Promise(r=>upstream.close(r))]); }
 });

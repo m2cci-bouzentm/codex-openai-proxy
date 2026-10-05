@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import type { Request, Response } from "express";
-import { once } from "events";
+
 import { getAuth } from "./auth";
 
 const MAX_BYTES = 32 * 1024 * 1024;
@@ -36,30 +36,4 @@ export async function boundedBody(response: globalThis.Response,onChunk?:()=>voi
     size += chunk.length; if (size > MAX_BYTES) throw new Error("Upstream response limit exceeded"); chunks.push(Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
-}
-
-export async function nativeGateway(req: Request, res: Response) {
-  const scope = requestScope(res);
-  try {
-    const suffix = req.url;
-    const path = req.path === "/usage" ? "/wham/usage" + suffix.slice(req.path.length) : "/codex" + suffix;
-    const response = await upstream(path, req.method === "GET" ? undefined : req.body, req, scope.signal);
-    if (res.destroyed) return;
-    res.status(response.status);
-    for (const [name,value] of response.headers) if (["content-type","retry-after","request-id","x-request-id"].includes(name) || name.startsWith("x-ratelimit-") || name.startsWith("x-codex-")) res.setHeader(name,value);
-    if (!response.ok || !response.headers.get("content-type")?.includes("text/event-stream")) {
-      const buffer = await boundedBody(response); res.send(buffer); return;
-    }
-    res.setHeader("Cache-Control","no-cache"); res.setHeader("X-Accel-Buffering","no");res.flushHeaders();
-    if(response.body) for await(const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
-      scope.reset(); if(res.destroyed) break;
-      if(!res.write(Buffer.from(chunk))) await once(res,"drain",{signal:scope.signal});
-    }
-    if(!res.destroyed)res.end();
-  } catch {
-    const timedOut=scope.signal.aborted;
-    scope.abort(); if(res.destroyed)return;
-    if(res.headersSent) { res.end('event: error\ndata: {"type":"error","error":{"message":"Upstream stream interrupted"}}\n\n'); return; }
-    res.status(timedOut ? 504 : 502).json({error:{type:"upstream_error",message:"Upstream request failed"}});
-  } finally { scope.dispose(); }
 }

@@ -1,7 +1,6 @@
 # codex-openai-proxy
 
-Central ChatGPT/Codex OAuth gateway for OpenAI clients and native Codex CLI on
-other devices. Clients use proxy API keys; OAuth/account identity stay server-side.
+ChatGPT/Codex OAuth proxy for OpenAI Chat Completions and Anthropic-compatible clients. Clients use proxy API keys; OAuth/account identity stay server-side.
 
 ## Setup
 
@@ -24,52 +23,20 @@ protocol endpoints require `Authorization: Bearer <proxy-key>`.
 ## Protocol endpoints
 
 Old `/v1` root is removed. Unified OpenAI base URL: `http://host:3033/openai/v1`.
-Native Codex base URL: `http://host:3033/codex` (no `/v1`).
 
 - POST `/openai/v1/chat/completions`: text, function tools, images, caching, usage.
 - GET `/openai/v1/models`: live upstream catalog converted to OpenAI format.
-
-- POST `/codex/responses`: native Responses body and incremental SSE preserved.
-- POST `/codex/responses/compact`: compatibility forwarding only; real upstream
-  probe returned 404, so availability is NOT verified. Current native compaction
-  via Responses requests passes through without modifying its fields.
-- GET `/codex/models?client_version=0.157.1`: native model metadata/catalog.
-- GET `/codex/usage`: central account usage/limits, backed by `/wham/usage`.
 
 The server replaces inbound OAuth/account headers with its own credentials.
 No arbitrary upstream URL can be selected by a client. WebSockets, hosted cloud
 sessions, login management and the entire ChatGPT backend are not proxied.
 
-## Native Codex client configuration
+## Codex CLI compatibility
 
-Set `CODEX_GATEWAY_KEY` to the proxy key. Client-side ChatGPT login is not needed.
-Add to `~/.codex/config.toml`:
-
-```toml
-model_provider = "central"
-model = "gpt-6-sol" # select a slug advertised by /codex/models
-# Optional model catalog path, configured before the provider table:
-# model_catalog_json = "/absolute/path/to/.codex/central-models.json"
-
-[model_providers.central]
-name = "Central Codex gateway"
-base_url = "https://your-host/codex"
-env_key = "CODEX_GATEWAY_KEY"
-wire_api = "responses"
-supports_websockets = false
-```
-
-Custom providers may not automatically fetch model metadata. Download the native
-catalog and set the absolute `model_catalog_json` path above:
-
-```bash
-curl -f 'https://your-host/codex/models?client_version=0.157.1' \
-  -H "Authorization: Bearer $CODEX_GATEWAY_KEY" \
-  -o ~/.codex/central-models.json
-```
-
-Refresh the catalog after CLI/model updates. Accepted but unadvertised model names
-can still trigger Codex's fallback metadata warning.
+No native Codex gateway is exposed. Installed Codex CLI rejects `wire_api = "chat"`
+and requires Responses API; direct CLI compatibility with this completion-only
+OpenAI surface is not supported. This does not prevent other OpenAI Chat
+Completions clients from using the proxy.
 
 ## Anthropic-compatible clients (Claude Code)
 
@@ -136,11 +103,11 @@ It neither deploys nor modifies permanent Claude Code config.
 - Encrypted reasoning context returns as `reasoning_details`; replay it unchanged
   with assistant history in tool loops. Refusals preserve diagnostics without tools.
 - Chat SSE is buffered until response/tool validation completes, then emits OpenAI
-  chunks, optional usage and `[DONE]`. Native Responses SSE is incremental.
+  chunks, optional usage and `[DONE]`.
 - Usage maps real upstream input/output/cached/reasoning counters, not invented totals.
 - Stable prompt cache keys and session routing persist across chat turns. Override
-  `prompt_cache_key` or supply a stable `session_id` header if desired. Native cache
-  fields and usage are untouched. Upstream decides cache hits; no local response cache.
+  `prompt_cache_key` or supply a stable `session_id` header if desired. Upstream
+  decides cache hits; no local response cache.
 - Optional `prompt_cache_options`/`prompt_cache_retention` pass through when supplied;
   model support varies. Explicit `prompt_cache_options` was rejected by the tested
   model, so it is NOT injected by default.
@@ -159,7 +126,7 @@ It neither deploys nor modifies permanent Claude Code config.
 - CODEX_PROXY_HOME: token storage, default `~/.codex-proxy`.
 - CODEX_HOME: initial server CLI login source, default `~/.codex`.
 - CODEX_CLIENT_VERSION: OpenAI model discovery version, default `0.157.1`.
-- CODEX_TIMEOUT_MS: `120000`, first response/body deadline and native stream idle timeout.
+- CODEX_TIMEOUT_MS: `120000`, upstream response idle timeout.
 - CODEX_UPSTREAM_BASE_URL: server-controlled backend override for local tests.
 
 JSON requests/buffered responses are bounded to 32 MiB. Redirects are rejected;
@@ -173,10 +140,11 @@ in `src/models.ts` current when upstream retires targets.
 npm test
 npm audit
 # Opt-in REAL requests: consumes subscription usage, uses existing server login.
-python scripts/e2e.py --cli --output /tmp/codex-proxy-e2e.json
+python scripts/e2e.py --output /tmp/codex-proxy-e2e.json
 ```
 
-Real E2E uses a temporary server and isolated CLI home, not a deployed-service
-restart. Verified text, function-tool roundtrip, image input, live model discovery,
-account usage, native Codex shell-tool execution, and 7040 cached input tokens.
+Real E2E uses a temporary server, not a deployed-service restart. Earlier real
+verification covered text, function-tool roundtrip, image input, live model
+discovery and 7040 cached input tokens. Current script exercises those supported
+endpoints only; native Codex routes and CLI checks were removed.
 Cache routing is upstream-controlled; every repeated request need not hit cache.

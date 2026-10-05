@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import "dotenv/config";
 import { AUTH_FILE } from "./auth";
-import { nativeGateway, requestScope, upstream, boundedBody } from "./gateway";
+import { requestScope, upstream, boundedBody } from "./gateway";
 import { chatCompletion } from "./openai";
 import { anthropicAuth, anthropicMessages, anthropicModels, anthropicError } from "./anthropic";
 
@@ -34,10 +34,7 @@ app.post("/openai/v1/chat/completions",auth,chatCompletion);
 app.post("/anthropic/v1/messages",anthropicAuth,anthropicMessages);
 app.get("/anthropic/v1/models",anthropicAuth,anthropicModels);
 app.post("/anthropic/v1/messages/count_tokens",anthropicAuth,(_req,res)=>anthropicError(res,501,"api_error","Exact Anthropic token counting is not available for Codex models"));
-const native=express.Router();
-native.post(["/responses","/responses/compact"],auth,nativeGateway);
-native.get(["/models","/usage"],auth,nativeGateway);
-app.use("/codex",native);
+
 
 app.use(((err: any,_req: express.Request,res: express.Response,_next: express.NextFunction)=>{
   if(_req.path.startsWith("/anthropic/")){anthropicError(res,err.type === "entity.too.large" ? 413 : 400,"invalid_request_error","Invalid or oversized request body");return;}
