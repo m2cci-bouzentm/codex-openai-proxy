@@ -11,6 +11,14 @@ Commands:
   import                       Interactively paste token fields one by one
   import --file <path> | -     Import native/normalized credential JSON
   status                        Print credential metadata (never secrets)
+
+Interactive token fields:
+  Access token example: eyJ... (JWT); leave blank when importing refresh-only
+  Refresh token example: <opaque-refresh-token>; leave blank for access-only
+  Expiry example (ISO 8601): 2026-10-05T15:24:26Z; epoch seconds/ms also accepted
+  Account ID example: acct_example123; leave blank to derive from JWT
+Device-code login prints a URL and one-time code. Open that URL on any device,
+enter the code, then return here; credentials save automatically.
 `);
   process.exit(exitCode);
 }
@@ -50,11 +58,11 @@ function askLine(prompt, hidden = false) {
 
 async function tokenWizard() {
   process.stderr.write('\nPaste Codex credentials. Values are saved to /data/auth.json.\nTokens stay hidden; leave either token blank if unavailable.\n');
-  const access = await askLine('Access token (hidden, optional): ', true);
-  const refresh = await askLine('Refresh token (hidden, optional): ', true);
+  const access = await askLine('Access token (hidden; example: eyJ...; blank for refresh-only): ', true);
+  const refresh = await askLine('Refresh token (hidden; example: <opaque-refresh-token>; blank for access-only): ', true);
   if (!access.trim() && !refresh.trim()) throw new Error('At least one access or refresh token is required');
-  const expires = await askLine('Expiry ISO time / epoch seconds / epoch ms (blank = derive JWT or refresh now): ');
-  const accountId = await askLine('ChatGPT account ID (blank = derive from token): ');
+  const expires = await askLine('Expiry (example: 2026-10-05T15:24:26Z or epoch; blank = derive JWT/refresh now): ');
+  const accountId = await askLine('ChatGPT account ID (example: acct_example123; blank = derive from JWT): ');
   return runTokenWizardImport({ access, refresh, expires, accountId });
 }
 

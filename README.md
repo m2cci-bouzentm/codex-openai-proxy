@@ -34,6 +34,12 @@ It asks for access token, refresh token, expiry, and optional ChatGPT account ID
 one by one. Token input is hidden. Access-only and refresh-only transfers work;
 at least one token is required. JSON file/stdin forms remain available only for automation.
 
+Example inputs shown by the wizard: access `eyJ...`, refresh
+`<opaque-refresh-token>`, expiry `2026-10-05T15:24:26Z` (epoch seconds/ms also
+accepted), account ID `acct_example123`. Leave access blank for refresh-only;
+leave refresh blank for access-only; leave account ID blank to derive from JWT.
+Device login explains that Codex prints a URL and one-time code to enter there.
+
 ### Check Status
 Inspect credential presence, method, expiration, and account-ID presence without revealing tokens or account identifiers:
 Run `proxy-auth status` inside the container.

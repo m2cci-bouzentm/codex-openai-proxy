@@ -41,6 +41,9 @@ export function runLogin(options: RunCliOptions = {}): AuthStatus {
     if (process.env[key] !== undefined) childEnv[key] = process.env[key];
   }
   childEnv.CODEX_HOME = isolatedCodexHome; childEnv.HOME = authDir;
+  process.stderr.write(options.browser
+    ? "Browser login: complete the opened authorization page; paste the returned code if Codex asks.\n"
+    : "Device login: Codex will print a URL and one-time code. Open the URL on any device and enter that code.\n");
   const proc = spawnSync("codex", options.browser ? ["login"] : ["login", "--device-auth"], { stdio: [0, 2, 2], env: childEnv });
   if (proc.error) throw new Error("Failed to spawn codex login");
   if (proc.status !== 0) throw new Error(`codex login exited with status ${proc.status}`);
