@@ -16,33 +16,27 @@ the container's user (root in this image), mode `0700`, without symlink path
 components; `auth.json` must be mode `0600`. Host-native execution instead
 requires ownership by the native process user.
 
-### Interactive Login
-The image includes official Codex CLI pinned to `0.160.0`. Login uses an isolated
-CLI configuration directory beneath the auth directory.
+### Interactive Authentication
+Enter the running container and execute one command:
 ```bash
-# Docker device login (default; explicit --device is also supported):
-docker compose run --rm codex-proxy proxy-auth login
+proxy-auth login
 ```
-Complete the displayed device verification in your host browser. Container
-browser login (`--browser`) is unsupported and rejected: its callback listener
-is not exposed. For browser login, run `proxy-auth login --browser` natively,
-then import those credentials into the Docker volume.
+Interactive menu offers:
+1. Codex device-code login (recommended inside container).
+2. Browser login (native host only; rejected inside container because callback is unavailable).
+3. Hidden, field-by-field access/refresh token paste.
 
-### Import Credentials
-Import existing native Codex credentials (`{"tokens": {"id_token", "access_token", "refresh_token"}}`) or normalized OAuth credentials (`{"type": "oauth", "access", "refresh", "expires", "accountId"}`):
+For token transfer directly, run:
 ```bash
-# Via file mount:
-docker compose run --rm -v "$(pwd)/import:/imports:ro" codex-proxy proxy-auth import --file /imports/auth.json
-
-# Via stdin (avoid placing tokens in shell arguments):
-docker compose run --rm -T codex-proxy proxy-auth import - < auth.json
+proxy-auth import
 ```
+It asks for access token, refresh token, expiry, and optional ChatGPT account ID
+one by one. Token input is hidden. Access-only and refresh-only transfers work;
+at least one token is required. JSON file/stdin forms remain available only for automation.
 
 ### Check Status
 Inspect credential presence, method, expiration, and account-ID presence without revealing tokens or account identifiers:
-```bash
-docker compose run --rm codex-proxy proxy-auth status
-```
+Run `proxy-auth status` inside the container.
 
 The server automatically monitors `/data/auth.json` and hot-reloads updated credentials dynamically without needing a container restart.
 

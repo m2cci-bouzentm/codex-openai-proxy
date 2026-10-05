@@ -181,3 +181,28 @@ process.exit(1);
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('proxy-auth token wizard values save pasted fields one by one', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-auth-wizard-'));
+  const previous = process.env.PROXY_AUTH_DIR;
+  try {
+    process.env.PROXY_AUTH_DIR = tmpDir;
+    const { runTokenWizardImport } = require('../dist/cli');
+    const payload = Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600,
+      'https://api.openai.com/auth': { chatgpt_account_id: 'wizard-account' } })).toString('base64url');
+    const access = `header.${payload}.signature`;
+    const status = runTokenWizardImport({ access, refresh: 'wizard-refresh', expires: '', accountId: '' });
+    assert.equal(status.configured, true);
+    assert.equal(status.accessPresent, true);
+    assert.equal(status.refreshPresent, true);
+    assert.equal(status.accountIdPresent, true);
+    const stored = JSON.parse(fs.readFileSync(path.join(tmpDir, 'auth.json'), 'utf8'));
+    assert.equal(stored.access, access);
+    assert.equal(stored.refresh, 'wizard-refresh');
+    assert.equal(runTokenWizardImport({ access: '', refresh: 'refresh-only', expires: '', accountId: '' }).isExpired, true);
+    assert.throws(() => runTokenWizardImport({ access: 'opaque', refresh: '', expires: '', accountId: '' }), /expiry/i);
+  } finally {
+    if (previous === undefined) delete process.env.PROXY_AUTH_DIR; else process.env.PROXY_AUTH_DIR = previous;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
