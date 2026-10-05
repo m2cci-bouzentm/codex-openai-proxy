@@ -174,6 +174,11 @@ tokens on all three measured repeats. Claude Code text and Bash tool/result
 flows passed through `/anthropic`; installed Codex CLI rejected `wire_api =
 "chat"` before network, as documented above.
 
+OpenCode 1.14.39 also passed against `/openai/v1`: text marker, completed Bash
+tool execution and four repeated cache probes. Three probes reported 8704 cache
+read tokens; one provider-routed repeat reported zero, so callers must consume
+actual per-request usage rather than assume every repeat is a hit.
+
 ## Verification
 
 ```bash
