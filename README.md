@@ -28,7 +28,7 @@ Native Codex base URL: `http://host:3033/codex` (no `/v1`).
 
 - POST `/openai/v1/chat/completions`: text, function tools, images, caching, usage.
 - GET `/openai/v1/models`: live upstream catalog converted to OpenAI format.
-- POST `/openai/v1/responses`: native Responses alias; use `stream: true`.
+
 - POST `/codex/responses`: native Responses body and incremental SSE preserved.
 - POST `/codex/responses/compact`: compatibility forwarding only; real upstream
   probe returned 404, so availability is NOT verified. Current native compaction

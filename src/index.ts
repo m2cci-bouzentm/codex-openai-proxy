@@ -38,8 +38,7 @@ const native=express.Router();
 native.post(["/responses","/responses/compact"],auth,nativeGateway);
 native.get(["/models","/usage"],auth,nativeGateway);
 app.use("/codex",native);
-// Responses API consumers can use the same native transport under the OpenAI prefix.
-app.post("/openai/v1/responses",auth,(req,res)=>{req.url="/responses";void nativeGateway(req,res);});
+
 app.use(((err: any,_req: express.Request,res: express.Response,_next: express.NextFunction)=>{
   if(_req.path.startsWith("/anthropic/")){anthropicError(res,err.type === "entity.too.large" ? 413 : 400,"invalid_request_error","Invalid or oversized request body");return;}
   res.status(err.type === "entity.too.large" ? 413 : 400).json({error:{type:"invalid_request_error",message:"Invalid or oversized request body"}});
