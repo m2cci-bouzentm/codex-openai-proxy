@@ -31,7 +31,7 @@ export const providerResponseSchema = z.object({
   id: z.string().optional(),
   status: z.string().optional(),
   output: z.array(upstreamOutputItemSchema).optional().default(() => []),
-  usage: upstreamUsageSchema.optional(),
+  usage: upstreamUsageSchema.nullish(),
   error: z.unknown().optional(),
   incomplete_details: z.object({ reason: z.string() }).nullish(),
 }).passthrough();
