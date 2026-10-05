@@ -1,10 +1,27 @@
 import crypto from "crypto";
 import { once } from "events";
 import type { Request, Response, NextFunction } from "express";
-import { upstream, boundedBody, requestScope } from "./gateway";
-import { prepareChat } from "./openai";
+import { upstream, boundedBody } from "../lib/codex-client";
+import { requestScope } from "../utils/abort";
+import { prepareChat } from "./openai.service";
+import { messagesRequestSchema } from "../schemas/anthropic.schema";
+import {
+  codexStreamEventSchema,
+  type ProviderResponse,
+  type UpstreamOutputItem,
+} from "../schemas/provider.schema";
+import { ProxyError } from "../errors/proxy-error";
 
 type Block = {type:string; [key:string]:any};
+type CodexStreamEvent = {
+  type: string;
+  response?: ProviderResponse;
+  item?: UpstreamOutputItem;
+  part?: { type: string; [key: string]: unknown };
+  item_id?: string;
+  content_index?: number;
+  delta?: string;
+};
 const LIMIT = 32 * 1024 * 1024;
 export function anthropicError(res:Response,status:number,type:string,message:string) {
   res.status(status).json({type:"error",error:{type,message}});
@@ -28,6 +45,11 @@ function imageBlock(block:Block) {
   throw new Error("Unsupported image source");
 }
 export function prepareAnthropic(body:any,sessionHeader?:string) {
+  const parsed = messagesRequestSchema.safeParse(body);
+  if (!parsed.success) {
+    const msg = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+    throw new ProxyError(`Invalid Messages request: ${msg}`, 400);
+  }
   if(!body || typeof body.model!=="string" || !body.model || !Number.isInteger(body.max_tokens) || body.max_tokens<=0 || !Array.isArray(body.messages) || !body.messages.length)throw new Error("Invalid Messages request");
   if(body.stream!==undefined && typeof body.stream!=="boolean")throw new Error("Invalid stream option");
   if(body.thinking && body.thinking.type!=="disabled")throw new Error("Anthropic thinking is not supported by Codex; disable it");
@@ -71,16 +93,18 @@ export function prepareAnthropic(body:any,sessionHeader?:string) {
   if(body.tool_choice?.disable_parallel_tool_use===true)prepared.native.parallel_tool_calls=false;
   return prepared;
 }
-function usage(response:any) {
-  const u=response.usage || {};const cached=u.input_tokens_details?.cached_tokens || 0;
-  return {input_tokens:Math.max(0,(u.input_tokens || 0)-cached),output_tokens:u.output_tokens || 0,cache_creation_input_tokens:0,cache_read_input_tokens:cached};
+function usage(response:ProviderResponse) {
+  const u=response.usage;const cached=u?.input_tokens_details?.cached_tokens;
+  const cachedTokens=typeof cached==="number"?cached:0;
+  return {input_tokens:Math.max(0,(u?.input_tokens || 0)-cachedTokens),output_tokens:u?.output_tokens || 0,cache_creation_input_tokens:0,cache_read_input_tokens:cachedTokens};
 }
-function validateCall(item:any,prepared:ReturnType<typeof prepareAnthropic>,ids:Set<string>) {
-  const input=JSON.parse(item.arguments);const validate=prepared.validators.get(item.name);
-  if(!item.call_id || ids.has(item.call_id) || !validate || !validate(input))throw new Error("Invalid upstream tool call");
+function validateCall(item:UpstreamOutputItem,prepared:ReturnType<typeof prepareAnthropic>,ids:Set<string>) {
+  if(!item.arguments || !item.name || !item.call_id)throw new Error("Invalid upstream tool call");
+  const input=JSON.parse(item.arguments) as unknown;const validate=prepared.validators.get(item.name);
+  if(ids.has(item.call_id) || !validate || !validate(input))throw new Error("Invalid upstream tool call");
   ids.add(item.call_id);return input;
 }
-function result(response:any,prepared:ReturnType<typeof prepareAnthropic>,items:any[]) {
+function result(response:ProviderResponse,prepared:ReturnType<typeof prepareAnthropic>,items:UpstreamOutputItem[]) {
   const output=response.output?.length?response.output:items;const content:Block[]=[];const ids=new Set<string>();let refused=false;
   const stopped=response.status==="incomplete" && response.incomplete_details?.reason==="max_output_tokens";
   for(const item of output) {
@@ -96,7 +120,7 @@ function result(response:any,prepared:ReturnType<typeof prepareAnthropic>,items:
   if(!stopped && response.status!=="completed")throw new Error("Upstream response failed");
   return {id:response.id,type:"message",role:"assistant",model:prepared.requested,content,stop_reason:stopped?"max_tokens":refused?"refusal":ids.size?"tool_use":"end_turn",stop_sequence:null,usage:usage(response)};
 }
-async function* events(response:globalThis.Response,reset:()=>void) {
+async function* events(response:globalThis.Response,reset:()=>void): AsyncGenerator<CodexStreamEvent> {
   if(!response.body)throw new Error("Missing upstream body");
   const decoder=new TextDecoder();let pending="";let total=0;
   for await(const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
@@ -106,7 +130,10 @@ async function* events(response:globalThis.Response,reset:()=>void) {
       const match=/\r?\n\r?\n/.exec(pending);if(!match)break;
       const frame=pending.slice(0,match.index);pending=pending.slice(match.index+match[0].length);
       const data=frame.split(/\r?\n/).filter(l=>l.startsWith("data:")).map(l=>l.slice(5).trimStart()).join("\n");
-      if(data && data!=="[DONE]")yield JSON.parse(data);
+      if(data && data!=="[DONE]") {
+        const parsedEvent = codexStreamEventSchema.parse(JSON.parse(data) as unknown);
+        yield parsedEvent as CodexStreamEvent;
+      }
     }
   }
   pending+=decoder.decode();if(pending.trim())throw new Error("Truncated upstream event");
@@ -114,21 +141,22 @@ async function* events(response:globalThis.Response,reset:()=>void) {
 export async function anthropicMessages(req:Request,res:Response) {
   let prepared:ReturnType<typeof prepareAnthropic>;
   try{prepared=prepareAnthropic(req.body,req.get("session_id"));}catch(e){anthropicError(res,400,"invalid_request_error",e instanceof Error?e.message:"Invalid request");return;}
-  const scope=requestScope(res);const states=new Map<string,{index:number;kind:string;raw:string;closed:boolean}>();const items:any[]=[];
+  const scope=requestScope(res);const states=new Map<string,{index:number;kind:string;raw:string;closed:boolean}>();const items:UpstreamOutputItem[]=[];
   let started=false;let completed=false;
-  const emit=async(type:string,data:any)=>{
+  const emit=async(type:string,data:Record<string,unknown>)=>{
     if(res.destroyed)throw new Error("Client disconnected");
     if(!res.write(`event: ${type}\ndata: ${JSON.stringify({type,...data})}\n\n`))await once(res,"drain",{signal:scope.signal});
   };
-  const start=async(response:any)=>{
+  const start=async(response:ProviderResponse)=>{
     if(started)return;started=true;
     res.setHeader("Content-Type","text/event-stream");res.setHeader("Cache-Control","no-cache");res.setHeader("X-Accel-Buffering","no");
     await emit("message_start",{message:{id:response.id,type:"message",role:"assistant",model:prepared.requested,content:[],stop_reason:null,stop_sequence:null,usage:usage(response)}});
   };
-  const block=async(key:string,kind:string,item?:any)=>{
+  const block=async(key:string,kind:string,item?:UpstreamOutputItem)=>{
     let s=states.get(key);if(s)return s;
     s={index:states.size,kind,raw:"",closed:false};states.set(key,s);
-    await emit("content_block_start",{index:s.index,content_block:kind==="tool"?{type:"tool_use",id:item.call_id,name:item.name,input:{}}:{type:"text",text:""}});return s;
+    if(kind==="tool" && (!item?.call_id || !item.name))throw new Error("Invalid tool item");
+    await emit("content_block_start",{index:s.index,content_block:kind==="tool"?{type:"tool_use",id:item!.call_id,name:item!.name,input:{}}:{type:"text",text:""}});return s;
   };
   const delta=async(s:{index:number;kind:string;raw:string;closed:boolean},text:string)=>{
     if(!text)return;if(s.closed)throw new Error("Delta after block close");s.raw+=text;
@@ -159,26 +187,28 @@ export async function anthropicMessages(req:Request,res:Response) {
       await start(data);for(const item of data.output || [])await finishItem(item);
       await emit("message_delta",{delta:{stop_reason:message.stop_reason,stop_sequence:null},usage:message.usage});await emit("message_stop",{});res.end();return;
     }
-    for await(const event of events(response,scope.reset)) {
+    for await(const event of events(response, () => scope.reset?.())) {
       if(completed)continue;
       if(["error","response.failed","response.cancelled"].includes(event.type))throw new Error("Upstream failed");
-      if(req.body.stream && event.type==="response.created")await start(event.response);
+      if(req.body.stream && event.type==="response.created" && event.response)await start(event.response);
       if(req.body.stream && !started && event.response)await start(event.response);
-      if(event.type==="response.output_item.done")items.push(event.item);
+      if(event.type==="response.output_item.done" && event.item)items.push(event.item);
       if(req.body.stream && started) {
-        if(event.type==="response.output_item.added" && event.item.type==="function_call")await block(event.item.id,"tool",event.item);
-        if(event.type==="response.content_part.added" && ["output_text","refusal"].includes(event.part.type))await block(`${event.item_id}:${event.content_index}`,"text");
-        if(event.type==="response.output_text.delta" || event.type==="response.refusal.delta")await delta(await block(`${event.item_id}:${event.content_index}`,"text"),event.delta);
+        if(event.type==="response.output_item.added" && event.item?.type==="function_call" && event.item.id)await block(event.item.id,"tool",event.item);
+        if(event.type==="response.content_part.added" && event.part && event.item_id && event.content_index!==undefined && ["output_text","refusal"].includes(event.part.type))await block(`${event.item_id}:${event.content_index}`,"text");
+        if((event.type==="response.output_text.delta" || event.type==="response.refusal.delta") && event.item_id && event.content_index!==undefined && event.delta!==undefined)await delta(await block(`${event.item_id}:${event.content_index}`,"text"),event.delta);
         if(event.type==="response.function_call_arguments.delta") {
+          if(!event.item_id || event.delta===undefined)throw new Error("Invalid tool delta");
           const s=states.get(event.item_id);if(!s)throw new Error("Tool delta without call");await delta(s,event.delta);
         }
-        if(event.type==="response.output_item.done")await finishItem(event.item);
+        if(event.type==="response.output_item.done" && event.item)await finishItem(event.item);
       }
       if(["response.completed","response.incomplete"].includes(event.type)) {
+        if(!event.response)throw new Error("Invalid final response");
         const message=result(event.response,prepared,items);
         if(!req.body.stream){res.json(message);completed=true;break;}
         await start(event.response);
-        for(const item of event.response.output?.length?event.response.output:items)await finishItem(item,message.stop_reason==="max_tokens");
+        for(const item of event.response.output.length?event.response.output:items)await finishItem(item,message.stop_reason==="max_tokens");
         for(const s of states.values())await close(s);
         await emit("message_delta",{delta:{stop_reason:message.stop_reason,stop_sequence:null},usage:message.usage});await emit("message_stop",{});res.end();completed=true;break;
       }
@@ -191,22 +221,4 @@ export async function anthropicMessages(req:Request,res:Response) {
       else anthropicError(res,timedOut?504:502,"api_error","Codex upstream response unavailable");
     }
   }finally{scope.dispose();}
-}
-export async function anthropicModels(req:Request,res:Response) {
-  const scope=requestScope(res);
-  try {
-    const query=new URLSearchParams({client_version:process.env.CODEX_CLIENT_VERSION || "0.157.1"});
-    const response=await upstream("/codex/models?"+query,undefined,req,scope.signal);
-    if(!response.ok){await boundedBody(response);anthropicError(res,response.status,"api_error","Codex model discovery failed");return;}
-    const payload=JSON.parse((await boundedBody(response)).toString());
-    if(!Array.isArray(payload.models))throw new Error("Invalid catalog");
-    let data=payload.models.map((m:any)=>({type:"model",id:m.slug,display_name:m.display_name,created_at:"1970-01-01T00:00:00Z"}));
-    if(req.query.after_id){const i=data.findIndex((m:any)=>m.id===req.query.after_id);if(i<0){anthropicError(res,400,"invalid_request_error","Unknown after_id");return;}data=data.slice(i+1);}
-    if(req.query.before_id){const i=data.findIndex((m:any)=>m.id===req.query.before_id);if(i<0){anthropicError(res,400,"invalid_request_error","Unknown before_id");return;}data=data.slice(0,i);}
-    const limit=req.query.limit===undefined?100:Number(req.query.limit);
-    if(!Number.isInteger(limit)||limit<1||limit>1000){anthropicError(res,400,"invalid_request_error","Invalid limit");return;}
-    const more=data.length>limit;data=req.query.before_id?data.slice(-limit):data.slice(0,limit);
-    res.json({data,has_more:more,first_id:data[0]?.id || null,last_id:data.at(-1)?.id || null});
-  }catch{scope.abort();if(!res.destroyed)anthropicError(res,502,"api_error","Codex model discovery failed");}
-  finally{scope.dispose();}
 }

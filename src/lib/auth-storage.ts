@@ -3,21 +3,15 @@ import path from "path";
 import os from "os";
 import { randomBytes } from "crypto";
 import { parsePayload } from "./jwt";
+import { oauthEntrySchema, authStatusSchema } from "../schemas/auth.schema";
+import type { OAuthEntry, AuthStatus } from "../types/auth";
+export type { OAuthEntry, AuthStatus };
 
 export const MAX_AUTH_BYTES = 64 * 1024;
 export function getAuthDir(): string { return process.env.PROXY_AUTH_DIR || process.env.CODEX_PROXY_HOME || "/data"; }
 export function getAuthFile(): string { return path.join(getAuthDir(), "auth.json"); }
 export const AUTH_FILE = getAuthFile();
 export const CODEX_CLI_AUTH = path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "auth.json");
-export interface OAuthEntry {
-  type: "oauth"; access: string; refresh: string; expires: number;
-  accountId?: string | null; subscriptionType?: string | null; rateLimitTier?: string | null; scopes?: string[];
-}
-export interface AuthStatus {
-  configured: boolean; type?: string; provider?: string; expiresAt?: string;
-  isExpired?: boolean; accessPresent?: boolean; refreshPresent?: boolean;
-  accountIdPresent?: boolean; subscriptionType?: string | null; rateLimitTier?: string | null;
-}
 export function ensurePrivateDir(dir: string): string {
   const resolved = path.resolve(dir);
   // Reject symlinks in every existing path component, including dangling links.
@@ -74,26 +68,19 @@ export function readCredentialFile(file: string): string {
 export function parseCredentialJson(raw: string): unknown {
   try { return JSON.parse(raw); } catch { throw new Error("Invalid credential JSON"); }
 }
-function record(value: unknown): value is Record<string, any> { return !!value && typeof value === "object" && !Array.isArray(value); }
-function expiry(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value) && Number.isFinite(new Date(value).getTime()); }
-function canonical(obj: Record<string, any>): OAuthEntry {
-  if (obj.type !== "oauth") throw new Error("Invalid credential schema");
-  for (const key of ["access", "refresh"]) if (obj[key] !== undefined && typeof obj[key] !== "string") throw new Error("Invalid credential tokens");
-  const access = obj.access ?? "", refresh = obj.refresh ?? "";
-  if (!access && !refresh) throw new Error("Invalid credential: missing tokens");
-  if (obj.expires !== undefined && !expiry(obj.expires)) throw new Error("Invalid credential expiry");
-  if (access && !expiry(obj.expires)) throw new Error("Invalid credential expiry");
-  for (const key of ["accountId", "subscriptionType", "rateLimitTier"]) {
-    if (obj[key] !== undefined && obj[key] !== null && typeof obj[key] !== "string") throw new Error("Invalid credential metadata");
+function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === "object" && !Array.isArray(value); }
+function expiry(value: unknown): value is number { return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 8_640_000_000_000_000; }
+function canonical(value: unknown): OAuthEntry {
+  const parsed = oauthEntrySchema.safeParse(value);
+  if (!parsed.success) throw new Error("Invalid credential schema");
+  const result: OAuthEntry = { ...parsed.data };
+  if (result.accountId === undefined && result.access) {
+    result.accountId = extractAccountId({ access_token: result.access });
   }
-  if (obj.scopes !== undefined && (!Array.isArray(obj.scopes) || !obj.scopes.every((v: unknown) => typeof v === "string"))) throw new Error("Invalid credential scopes");
-  const result: OAuthEntry = { type: "oauth", access, refresh, expires: access ? obj.expires : 0 };
-  for (const key of ["accountId", "subscriptionType", "rateLimitTier", "scopes"] as const) if (obj[key] !== undefined) (result as any)[key] = obj[key];
-  if (result.accountId === undefined && access) result.accountId = extractAccountId({ access_token: access });
   return result;
 }
 export function read(): OAuthEntry | null {
-  try { ensureAuthDir(); return canonical(parseCredentialJson(readCredentialFile(getAuthFile())) as Record<string, any>); }
+  try { ensureAuthDir(); return canonical(parseCredentialJson(readCredentialFile(getAuthFile()))); }
   catch { return null; }
 }
 export function write(entry: OAuthEntry): void {
@@ -133,6 +120,16 @@ export function normalizeAndSave(data: unknown): OAuthEntry {
 }
 export function getStatus(): AuthStatus {
   const entry = read();
-  if (!entry) return { configured: false };
-  return { configured: true, type: "oauth", provider: "openai", expiresAt: new Date(entry.expires).toISOString(), isExpired: entry.expires <= Date.now(), accessPresent: !!entry.access, refreshPresent: !!entry.refresh, accountIdPresent: !!entry.accountId, subscriptionType: entry.subscriptionType ?? null, rateLimitTier: entry.rateLimitTier ?? null };
+  return authStatusSchema.parse({
+    configured: !!entry,
+    type: entry?.type ?? null,
+    provider: "openai",
+    expiresAt: entry ? new Date(entry.expires).toISOString() : null,
+    isExpired: entry ? entry.expires <= Date.now() : false,
+    accessPresent: !!entry?.access,
+    refreshPresent: !!entry?.refresh,
+    accountIdPresent: !!entry?.accountId,
+    subscriptionType: entry?.subscriptionType ?? null,
+    rateLimitTier: entry?.rateLimitTier ?? null,
+  });
 }

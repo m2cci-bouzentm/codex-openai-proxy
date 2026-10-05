@@ -1,5 +1,5 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');
-const {prepareChat}=require('../dist/openai');
+const {prepareChat}=require('../dist/services/openai.service');
 const tool={type:'function',function:{name:'echo',parameters:{type:'object',properties:{text:{type:'string'}},required:['text'],additionalProperties:false}}};
 test('images and system/developer instructions survive conversion; cache key stays stable across turns',()=>{
  const base={model:'test',tools:[tool],messages:[{role:'system',content:'one'},{role:'developer',content:'two'},{role:'user',content:[{type:'text',text:'hi'},{type:'image_url',image_url:{url:'data:image/png;base64,AA==',detail:'low'}}]}]};

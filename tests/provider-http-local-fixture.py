@@ -26,11 +26,11 @@ def run(mutation):
         temp = Path(directory)
         shutil.copytree(ROOT / 'dist', temp / 'dist')
         if mutation:
-            adapter = temp / 'dist/anthropic.js'
+            adapter = temp / 'dist/services/anthropic.service.js'
             compiled = adapter.read_text()
-            anchor = 'input_tokens: Math.max(0, (u.input_tokens || 0) - cached)'
+            anchor = 'input_tokens: Math.max(0, (u?.input_tokens || 0) - cachedTokens)'
             assert anchor in compiled
-            adapter.write_text(compiled.replace(anchor, 'input_tokens: (u.input_tokens || 0)', 1))
+            adapter.write_text(compiled.replace(anchor, 'input_tokens: (u?.input_tokens || 0)', 1))
         (temp / 'auth.json').write_text(json.dumps({'type': 'oauth', 'access': 'synthetic', 'refresh': 'unused', 'expires': 4102444800000, 'accountId': 'fixture'}))
         with socket.socket() as sock:
             sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]

@@ -11,9 +11,9 @@ async function fixture(run) {
   process.env.PROXY_AUTH_DIR = dir;
   process.env.CODEX_HOME = path.join(dir, 'native');
   fs.mkdirSync(process.env.CODEX_HOME);
-  for (const name of ['storage', 'auth']) delete require.cache[require.resolve(`../dist/${name}.js`)];
-  const storage = require('../dist/storage.js');
-  const auth = require('../dist/auth.js');
+  for (const name of ['lib/auth-storage', 'services/auth.service']) delete require.cache[require.resolve(`../dist/${name}.js`)];
+  const storage = require('../dist/lib/auth-storage');
+  const auth = require('../dist/services/auth.service');
   try { await run({ dir, storage, auth }); } finally {
     global.fetch = oldFetch;
     for (const [key, value] of Object.entries(oldEnv)) {
@@ -156,10 +156,10 @@ test('auth module hot-reloading: picks up updated auth.json without process rest
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-auth-reload-'));
   try {
     process.env.PROXY_AUTH_DIR = tmpDir;
-    delete require.cache[require.resolve('../dist/storage.js')];
-    delete require.cache[require.resolve('../dist/auth.js')];
-    const storage = require('../dist/storage.js');
-    const auth = require('../dist/auth.js');
+    delete require.cache[require.resolve('../dist/lib/auth-storage')];
+    delete require.cache[require.resolve('../dist/services/auth.service')];
+    const storage = require('../dist/lib/auth-storage');
+    const auth = require('../dist/services/auth.service');
 
     // First auth state: token 1
     const token1Payload = { exp: Math.floor(Date.now() / 1000) + 3600, chatgpt_account_id: 'acc-1' };

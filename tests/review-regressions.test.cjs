@@ -1,5 +1,5 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const http=require('node:http');
-const {prepareChat}=require('../dist/openai');
+const {prepareChat}=require('../dist/services/openai.service');
 test('equivalent array text and complete historical tools survive registry changes',()=>{
  const converted=prepareChat({messages:[{role:'system',content:[{type:'text',text:'system'}]},{role:'developer',content:[{type:'text',text:'developer'}]},{role:'assistant',content:[{type:'text',text:'old'}]},{role:'user',content:'next'}]}).native;
  assert.equal(converted.instructions,'system\n\ndeveloper');assert.equal(converted.input[0].content[0].type,'output_text');
@@ -66,7 +66,7 @@ test('OpenCode OpenAI payload with 9 standard tools roundtrips function call and
   await new Promise(r => fake.listen(0, '127.0.0.1', r));
   process.env.API_KEY = 'oc-matrix-key';
   process.env.CODEX_UPSTREAM_BASE_URL = `http://127.0.0.1:${fake.address().port}`;
-  const auth = require('../dist/auth');
+  const auth = require('../dist/services/auth.service');
   auth.getAuth = async () => ({ accessToken: 'test-secret', accountId: 'test-account' });
   const { app } = require('../dist/index');
   const server = app.listen(0, '127.0.0.1');
@@ -169,7 +169,7 @@ test('Claude Code Anthropic adapter tool roundtrip for exposed Bash, Edit, and R
   await new Promise(r => fake.listen(0, '127.0.0.1', r));
   process.env.API_KEY = 'cc-matrix-key';
   process.env.CODEX_UPSTREAM_BASE_URL = `http://127.0.0.1:${fake.address().port}`;
-  const auth = require('../dist/auth');
+  const auth = require('../dist/services/auth.service');
   auth.getAuth = async () => ({ accessToken: 'test-secret', accountId: 'test-account' });
   const { app } = require('../dist/index');
   const server = app.listen(0, '127.0.0.1');
@@ -297,7 +297,7 @@ test('both model endpoints include all 9 mock catalog IDs and switching two IDs 
   await new Promise(r => fake.listen(0, '127.0.0.1', r));
   process.env.API_KEY = 'model-switch-key';
   process.env.CODEX_UPSTREAM_BASE_URL = `http://127.0.0.1:${fake.address().port}`;
-  const auth = require('../dist/auth');
+  const auth = require('../dist/services/auth.service');
   auth.getAuth = async () => ({ accessToken: 'test-secret', accountId: 'test-account' });
   const { app } = require('../dist/index');
   const server = app.listen(0, '127.0.0.1');
@@ -378,7 +378,7 @@ test('chat buffering uses idle timeout, not a total generation deadline', async 
   },50);res.on('close',()=>clearInterval(timer));
  });await new Promise(r=>fake.listen(0,'127.0.0.1',r));
  process.env.CODEX_UPSTREAM_BASE_URL=`http://127.0.0.1:${fake.address().port}`;
- const auth=require('../dist/auth');auth.getAuth=async()=>({accessToken:'test-secret',accountId:'test-account'});
+ const auth=require('../dist/services/auth.service');auth.getAuth=async()=>({accessToken:'test-secret',accountId:'test-account'});
  const {app}=require('../dist/index');const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
  try{
   const response=await fetch(`http://127.0.0.1:${server.address().port}/openai/v1/chat/completions`,{signal:AbortSignal.timeout(5000),method:'POST',headers:{authorization:'Bearer review-key','content-type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:'hi'}]})});

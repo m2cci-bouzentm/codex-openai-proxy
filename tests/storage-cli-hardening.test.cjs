@@ -1,7 +1,7 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs'); const os=require('node:os'); const path=require('node:path');
-const s=require('../dist/storage'); const cli=require('../dist/cli'); const jwt=require('../dist/jwt');
+const s=require('../dist/lib/auth-storage'); const cli=require('../dist/cli'); const jwt=require('../dist/lib/jwt');
 function fixture(fn){const dir=fs.mkdtempSync(path.join(os.tmpdir(),'hardening-')); const old=process.env.PROXY_AUTH_DIR;process.env.PROXY_AUTH_DIR=dir;try{fn(dir);}finally{if(old===undefined)delete process.env.PROXY_AUTH_DIR;else process.env.PROXY_AUTH_DIR=old;fs.rmSync(dir,{recursive:true,force:true});}}
 const entry=()=>({type:'oauth',access:'access',refresh:'refresh',expires:Date.now()+60000,accountId:'private-account'});
 test('strict schema rejects unsafe expiry and metadata',()=>fixture(()=>{for(const patch of [{expires:Infinity},{expires:NaN},{expires:9e15},{accountId:42},{subscriptionType:[]},{rateLimitTier:3},{scopes:[3]}])assert.throws(()=>s.normalizeAndSave({...entry(),...patch}));}));

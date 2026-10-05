@@ -26,7 +26,7 @@ test('protocol routes centralize auth, preserve native caching/usage and bridge 
   });
   await new Promise(r => upstream.listen(0,'127.0.0.1',r));
   process.env.CODEX_UPSTREAM_BASE_URL = `http://127.0.0.1:${upstream.address().port}`;
-  const auth = require('../dist/auth'); auth.getAuth = async () => ({ accessToken:'central-token',accountId:'central-account' });
+  const auth = require('../dist/services/auth.service'); auth.getAuth = async () => ({ accessToken:'central-token',accountId:'central-account' });
   const { app } = require('../dist/index');
   const server = app.listen(0,'127.0.0.1'); await new Promise(r=>server.once('listening',r));
   const base = `http://127.0.0.1:${server.address().port}`;

@@ -1,5 +1,5 @@
 const {test}=require('node:test');const assert=require('node:assert/strict');const http=require('node:http');
-const {prepareAnthropic}=require('../dist/anthropic');
+const {prepareAnthropic}=require('../dist/services/anthropic.service');
 const tool={name:'echo',input_schema:{type:'object',properties:{text:{type:'string'}},required:['text']}};
 const base={model:'bad',max_tokens:256,tools:[tool],messages:[{role:'user',content:'hi'}]};
 test('Anthropic failed tool results preserve failure semantics',()=>{
@@ -17,7 +17,7 @@ test('streamed invalid calls never close executable blocks; token cap and backwa
   emit({type:'response.function_call_arguments.delta',item_id:'fc',delta:item.arguments});emit({type:'response.output_item.done',item});
   const incomplete=body.model==='cap';emit({type:incomplete?'response.incomplete':'response.completed',response:{id:'r',status:incomplete?'incomplete':'completed',incomplete_details:incomplete?{reason:'max_output_tokens'}:null,output:[item],usage:{input_tokens:2,output_tokens:3}}});res.end();
  });await new Promise(r=>fake.listen(0,'127.0.0.1',r));process.env.CODEX_UPSTREAM_BASE_URL=`http://127.0.0.1:${fake.address().port}`;
- const auth=require('../dist/auth');auth.getAuth=async()=>({accessToken:'fake-private',accountId:'fake-account'});
+ const auth=require('../dist/services/auth.service');auth.getAuth=async()=>({accessToken:'fake-private',accountId:'fake-account'});
  const {app}=require('../dist/index');const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const url=`http://127.0.0.1:${server.address().port}/anthropic/v1`;const headers={'content-type':'application/json','x-api-key':'review-compat-key'};
  const post=(model,stream)=>fetch(url+'/messages',{method:'POST',headers,body:JSON.stringify({...base,model,stream})});
  try{

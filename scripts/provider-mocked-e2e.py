@@ -72,11 +72,11 @@ def run(image, mutation=False):
         auth = {'type': 'oauth', 'access': 'synthetic-provider-fixture', 'refresh': 'unused-fixture', 'expires': 4102444800000, 'accountId': 'fixture-account'}
         mount = []
         if mutation:
-            compiled = docker('run', '--rm', '--entrypoint', 'cat', image, '/app/dist/anthropic.js')
-            original = 'input_tokens: Math.max(0, (u.input_tokens || 0) - cached)'
+            compiled = docker('run', '--rm', '--entrypoint', 'cat', image, '/app/dist/services/anthropic.service.js')
+            original = 'input_tokens: Math.max(0, (u?.input_tokens || 0) - cachedTokens)'
             if original not in compiled: raise RuntimeError('cache mutation anchor absent')
-            (temp / 'anthropic.js').write_text(compiled.replace(original, 'input_tokens: (u.input_tokens ?? 0)', 1))
-            mount = ['-v', f'{temp / "anthropic.js"}:/app/dist/anthropic.js:ro']
+            (temp / 'anthropic.js').write_text(compiled.replace(original, 'input_tokens: (u?.input_tokens ?? 0)', 1))
+            mount = ['-v', f'{temp / "anthropic.js"}:/app/dist/services/anthropic.service.js:ro']
         try:
             docker('volume', 'create', volume)
             # Initialize as image's runtime user: private, owned, writable canonical directory.

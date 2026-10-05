@@ -28,7 +28,7 @@ test('Anthropic clients: native envelopes, incremental tools, cache usage and sa
  });
  await new Promise(r=>fake.listen(0,'127.0.0.1',r));
  process.env.CODEX_UPSTREAM_BASE_URL=`http://127.0.0.1:${fake.address().port}`;
- const auth=require('../dist/auth');auth.getAuth=async()=>({accessToken:'upstream-test-secret',accountId:'central-test-account'});
+ const auth=require('../dist/services/auth.service');auth.getAuth=async()=>({accessToken:'upstream-test-secret',accountId:'central-test-account'});
  const {app}=require('../dist/index');const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
  const base=`http://127.0.0.1:${server.address().port}/anthropic/v1`;
  const headers={'content-type':'application/json','x-api-key':'anthropic-test-key'};

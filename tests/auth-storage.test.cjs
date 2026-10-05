@@ -10,8 +10,8 @@ test('storage contract: paths, permissions, parsing, and status', async () => {
   try {
     process.env.PROXY_AUTH_DIR = tmpDir;
     // Delete require cache to reload storage
-    delete require.cache[require.resolve('../dist/storage.js')];
-    const storage = require('../dist/storage.js');
+    delete require.cache[require.resolve('../dist/lib/auth-storage')];
+    const storage = require('../dist/lib/auth-storage');
 
     assert.equal(storage.getAuthDir(), tmpDir);
     assert.equal(storage.getAuthFile(), path.join(tmpDir, 'auth.json'));
@@ -19,8 +19,8 @@ test('storage contract: paths, permissions, parsing, and status', async () => {
     // Check directory created with 0700 if not existing
     const customDir = path.join(tmpDir, 'nested-auth');
     process.env.PROXY_AUTH_DIR = customDir;
-    delete require.cache[require.resolve('../dist/storage.js')];
-    const storage2 = require('../dist/storage.js');
+    delete require.cache[require.resolve('../dist/lib/auth-storage')];
+    const storage2 = require('../dist/lib/auth-storage');
     storage2.ensureAuthDir();
     const dirStat = fs.statSync(customDir);
     assert.equal(dirStat.mode & 0o777, 0o700);
@@ -68,8 +68,8 @@ test('storage normalizeAndSave: handles native Codex tokens and normalized OAuth
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'proxy-auth-norm-'));
   try {
     process.env.PROXY_AUTH_DIR = tmpDir;
-    delete require.cache[require.resolve('../dist/storage.js')];
-    const storage = require('../dist/storage.js');
+    delete require.cache[require.resolve('../dist/lib/auth-storage')];
+    const storage = require('../dist/lib/auth-storage');
 
     const expSec = Math.floor(Date.now() / 1000) + 7200;
     const jwtPayload = {

@@ -152,9 +152,31 @@ It neither deploys nor modifies permanent Claude Code config.
   model support varies. Explicit `prompt_cache_options` was rejected by the tested
   model, so it is NOT injected by default.
 - `n=1`, function tools and text tool outputs are supported. Legacy `functions`,
-  `function_call`, and `response_format` are rejected. `max_tokens` and
-  `max_completion_tokens` are not translated; output limits are upstream-controlled.
+  `function_call`, and `response_format` are rejected. `max_tokens`,
+  `max_completion_tokens`, and `max_output_tokens` map to upstream output limits.
   Other unlisted OpenAI parameters are not guaranteed.
+
+## Architecture & Shared Contract
+
+Canonical layers match Claude proxy so provider adapters can eventually live in one repository:
+
+```text
+src/
+  config/       Environment settings, Zod env parsing, and model catalog
+  routes/       Canonical endpoint registration (openai.ts, anthropic.ts, health.ts)
+  middleware/   API-key authentication and Zod boundary validation
+  controllers/  OpenAI and Anthropic HTTP lifecycle
+  services/     Protocol translation and OAuth lifecycle
+  schemas/      Byte-identical shared Zod contract (contracts.schema.ts) plus provider schemas
+  types/        Shared contracts and schema-inferred TypeScript types
+  lib/          Codex transport, JWT helpers, and secure credential storage
+  jobs/         Proactive OAuth refresh
+  errors/       Protocol-safe domain errors
+  utils/        Request cancellation helpers
+  index.ts      Server bootstrap and router composition
+```
+
+All inbound OpenAI/Anthropic payloads, environment variables, auth storage files, token wizard values, and known Codex responses/events are validated with Zod 4.3.6. `contracts.schema.ts` is byte-identical in both repositories; architecture tests pin its SHA-256 and required module manifest. Ajv/Ajv 2020 remain only for caller-provided JSON Schema tool parameters.
 
 ## Configuration
 
@@ -163,7 +185,7 @@ It neither deploys nor modifies permanent Claude Code config.
 - REASONING_EFFORT: `high` by default.
 - MODEL_ALIASES: existing legacy mappings plus optional `old=new,old2=new2`.
 - PORT: `3033`.
-- CODEX_PROXY_HOME: token storage, default `~/.codex-proxy`.
+- CODEX_PROXY_HOME: legacy auth-storage fallback; canonical default is `/data`.
 - CODEX_HOME: initial server CLI login source, default `~/.codex`.
 - CODEX_CLIENT_VERSION: OpenAI model discovery version, default `0.157.1`.
 - CODEX_TIMEOUT_MS: `120000`, upstream response idle timeout.
@@ -172,7 +194,7 @@ It neither deploys nor modifies permanent Claude Code config.
 JSON requests/buffered responses are bounded to 32 MiB. Redirects are rejected;
 client disconnects cancel inference. Error messages do not expose credentials.
 Discovery is live rather than a hardcoded model list. Keep deliberate legacy aliases
-in `src/models.ts` current when upstream retires targets.
+in `src/config/models.ts` current when upstream retires targets.
 
 ## Reproducible Docker verification
 

@@ -1,9 +1,9 @@
 import fs from "fs";
-import * as storage from "./storage";
+import * as storage from "../lib/auth-storage";
 
 const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
-export { AUTH_FILE, CODEX_CLI_AUTH } from "./storage";
+export { AUTH_FILE, CODEX_CLI_AUTH } from "../lib/auth-storage";
 
 interface TokenResponse {
   id_token?: string;
@@ -76,12 +76,12 @@ function unchanged(snapshot: Snapshot): boolean {
   catch { return false; }
 }
 
-export async function getAuth(): Promise<AuthResult> {
+export async function getAuth(bufferMs = 0): Promise<AuthResult> {
   checkAndReloadAuth();
   const snapshot = currentAuth;
   if (!snapshot) throw new Error(`No credentials configured in ${storage.getAuthFile()}`);
   const entry = snapshot.entry;
-  if (entry.access && entry.expires > Date.now()) return { accessToken: entry.access, accountId: entry.accountId || "" };
+  if (entry.access && entry.expires > Date.now() + bufferMs) return { accessToken: entry.access, accountId: entry.accountId || "" };
   if (!entry.refresh) throw new Error("Credentials expired and no refresh token configured");
 
   let pending = refreshes.get(snapshot.generation);
@@ -108,5 +108,5 @@ export async function getAuth(): Promise<AuthResult> {
   }
   await pending;
   // A concurrent import may need its own refresh; never return the old response.
-  return getAuth();
+  return getAuth(bufferMs);
 }

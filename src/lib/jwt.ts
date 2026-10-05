@@ -5,5 +5,7 @@ export function parsePayload(token: string): Record<string, unknown> {
     const value = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error();
     return value;
-  } catch { throw new Error("Invalid JWT payload"); }
+  } catch {
+    throw new Error("Invalid JWT payload");
+  }
 }

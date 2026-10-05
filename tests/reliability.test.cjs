@@ -11,7 +11,7 @@ test('chat disconnect aborts upstream; bounded errors and timeouts hide secrets'
   res.on('close',aborted);started();
  });await new Promise(r=>upstream.listen(0,'127.0.0.1',r));
  process.env.CODEX_UPSTREAM_BASE_URL=`http://127.0.0.1:${upstream.address().port}`;
- const auth=require('../dist/auth');auth.getAuth=async()=>({accessToken:'PRIVATE_TOKEN',accountId:'PRIVATE_ACCOUNT'});
+ const auth=require('../dist/services/auth.service');auth.getAuth=async()=>({accessToken:'PRIVATE_TOKEN',accountId:'PRIVATE_ACCOUNT'});
  const {app}=require('../dist/index');const server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
  const url=`http://127.0.0.1:${server.address().port}/openai/v1/chat/completions`;
  const headers={authorization:'Bearer test-key','content-type':'application/json'};
