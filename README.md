@@ -163,8 +163,9 @@ Do not independently refresh original login while testing copies.
 
 Linux Docker daemon must support current containerd shim. A shim bootstrap API
 mismatch blocks container startup; these scripts never restart existing services.
-For a non-Docker diagnostic only, `python3 tests/provider-http-local-fixture.py`
-runs the same mock HTTP cases and verifies cache mutation against local Node.
+For a non-Docker diagnostic only, `npm run test:http:local`
+runs the same mock HTTP cases and verifies cache mutation against local Node;
+it exits nonzero if baseline cases fail or the deliberate mutation is missed.
 This diagnostic is not evidence of container or real-provider success.
 
 ## Verification

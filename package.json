@@ -5,6 +5,7 @@
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test tests/*.test.cjs",
+    "test:http:local": "npm run build && python3 tests/provider-http-local-fixture.py",
     "test:http:docker": "python3 scripts/provider-mocked-e2e.py",
     "test:http:mutation": "python3 scripts/provider-mocked-e2e.py --no-build --mutation",
     "test:e2e:docker": "python3 scripts/docker-e2e.py",

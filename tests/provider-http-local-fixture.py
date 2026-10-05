@@ -50,4 +50,6 @@ if __name__ == '__main__':
     red = run(True)
     caught = [c for c in red['cases'] if c['name'] == 'anthropic:text:json' and c['status'] == 'failed' and 'cache' in c.get('error', '')]
     assert caught, 'cache mutation escaped regression case'
-    print(json.dumps({'mutation': {'passed': red['passed'], 'failed': red['failed'], 'caught': caught}, 'baseline': run(False)}, indent=2))
+    baseline = run(False)
+    print(json.dumps({'mutation': {'passed': red['passed'], 'failed': red['failed'], 'caught': caught}, 'baseline': baseline}, indent=2))
+    assert baseline['failed'] == 0, 'baseline HTTP integration cases failed'
