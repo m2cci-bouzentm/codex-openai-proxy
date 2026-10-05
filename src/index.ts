@@ -1,70 +1,43 @@
 import express from "express";
 import cors from "cors";
 import "dotenv/config";
+import { config } from "./config";
+import { AUTH_FILE } from "./lib/auth-storage";
+import { healthRouter } from "./routes/health";
+import { openaiRouter } from "./routes/openai";
+import { anthropicRouter } from "./routes/anthropic";
+import { anthropicError } from "./services/anthropic.service";
+import { startJobs } from "./jobs";
 
-import { createCompletion } from "./codex";
-import { AUTH_FILE } from "./auth";
-import { MODELS, resolveModel, type ReasoningEffort } from "./models";
-
-const app = express();
+export const app = express();
 app.use(cors());
+
+// Configure body parsers for high-capacity inference endpoints (32mb)
+app.use(["/openai/v1/chat/completions", "/anthropic/v1/messages"], express.json({ limit: "32mb" }));
 app.use(express.json());
 
-const API_KEY = process.env.API_KEY;
-const DEFAULT_MODEL = process.env.DEFAULT_MODEL || "gpt-5.6-luna";
-const REASONING_EFFORT = (process.env.REASONING_EFFORT || "high") as ReasoningEffort;
-const PORT = process.env.PORT || 3033;
+// Mount routers
+app.use("/health", healthRouter);
+app.use("/openai/v1", openaiRouter);
+app.use("/anthropic", anthropicRouter);
 
-function auth(req: express.Request, res: express.Response, next: express.NextFunction) {
-  const header = req.headers.authorization;
-  if (!header || header !== `Bearer ${API_KEY}`) {
-    res.status(401).json({ error: { message: "Invalid API key", type: "auth_error" } });
+app.use(((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (_req.path.startsWith("/anthropic/")) {
+    anthropicError(res, err.type === "entity.too.large" ? 413 : 400, "invalid_request_error", "Invalid or oversized request body");
     return;
   }
-  next();
-}
-
-app.get("/health", (_req, res) => res.json({ status: "ok" }));
-
-app.get("/v1/models", (_req, res) => {
-  res.json({
-    object: "list",
-    data: MODELS.map((id) => ({ id, object: "model", created: 1700000000, owned_by: "openai" })),
+  res.status(err.type === "entity.too.large" ? 413 : 400).json({
+    error: {
+      type: "invalid_request_error",
+      message: "Invalid or oversized request body",
+    },
   });
-});
+}) as express.ErrorRequestHandler);
 
-app.post("/v1/chat/completions", auth, async (req, res) => {
-  const { messages, model, reasoning_effort } = req.body;
-
-  if (!messages || !messages.length) {
-    res.status(400).json({ error: { message: "messages is required", type: "invalid_request" } });
-    return;
-  }
-
-  const requestedModel: string = model || DEFAULT_MODEL;
-  const resolvedModel = resolveModel(requestedModel);
-  const effort: ReasoningEffort = reasoning_effort || REASONING_EFFORT;
-
-  try {
-    const content = await createCompletion(messages, resolvedModel, effort);
-
-    res.json({
-      id: `chatcmpl-${Date.now()}`,
-      object: "chat.completion",
-      created: Math.floor(Date.now() / 1000),
-      model: resolvedModel,
-      choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("request failed:", message);
-    res.status(500).json({ error: { message, type: "server_error" } });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`codex-proxy listening on :${PORT}`);
-  console.log(`auth: ${AUTH_FILE}`);
-  console.log(`default model: ${DEFAULT_MODEL} (effort ${REASONING_EFFORT})`);
-});
+if (require.main === module) {
+  app.listen(config.port, () => {
+    console.log(`codex-proxy listening on :${config.port}`);
+    console.log(`auth: ${AUTH_FILE}`);
+    startJobs();
+  });
+}

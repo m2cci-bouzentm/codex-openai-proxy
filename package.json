@@ -2,17 +2,30 @@
   "name": "codex-openai-proxy",
   "version": "1.0.0",
   "private": true,
+  "bin": {
+    "proxy-auth": "./bin/proxy-auth"
+  },
   "scripts": {
     "build": "tsc",
+    "test": "npm run build && node --test tests/*.test.cjs",
+    "test:auth:docker": "python3 scripts/test-docker-auth.py",
+    "test:http:local": "npm run build && python3 tests/provider-http-local-fixture.py",
+    "test:http:docker": "python3 scripts/provider-mocked-e2e.py",
+    "test:http:mutation": "python3 scripts/provider-mocked-e2e.py --no-build --mutation",
+    "test:e2e:docker": "python3 scripts/docker-e2e.py",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "setup": "bash setup.sh"
   },
   "dependencies": {
+    "ajv": "8.20.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2"
+    "express": "^4.21.2",
+    "node-cron": "^4.6.0",
+    "zod": "4.3.6"
   },
+  "overrides": { "qs": "6.16.0" },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
