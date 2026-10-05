@@ -104,3 +104,15 @@ test('Zod boundary schemas reject malformed/nested/unknown input and validate li
   };
   assert.doesNotThrow(() => providerSchema.modelsResponseSchema.parse(validModelCatalog));
 });
+
+test('accepted OpenAI sampling fields are not forwarded to Codex upstream', () => {
+  const { prepareChat } = require('../dist/services/openai.service');
+  const prepared = prepareChat({
+    model: 'gpt-5.6-luna',
+    messages: [{ role: 'user', content: 'hello' }],
+    temperature: 0.2,
+    top_p: 0.9,
+  });
+  assert.equal(prepared.native.temperature, undefined);
+  assert.equal(prepared.native.top_p, undefined);
+});
