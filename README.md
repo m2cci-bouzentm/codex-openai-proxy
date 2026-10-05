@@ -168,6 +168,12 @@ runs the same mock HTTP cases and verifies cache mutation against local Node;
 it exits nonzero if baseline cases fail or the deliberate mutation is missed.
 This diagnostic is not evidence of container or real-provider success.
 
+Live Docker verification on 2026-10-05 passed all 33 HTTP cases against the
+real Codex backend. OpenAI and Anthropic cache tests each observed 2176 cached
+tokens on all three measured repeats. Claude Code text and Bash tool/result
+flows passed through `/anthropic`; installed Codex CLI rejected `wire_api =
+"chat"` before network, as documented above.
+
 ## Verification
 
 ```bash

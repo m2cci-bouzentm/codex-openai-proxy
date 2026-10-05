@@ -63,7 +63,7 @@ def main():
         result=subprocess.run(['codex','exec','--skip-git-repo-check','Reply CLI_OK'],env=env,capture_output=True,text=True,timeout=60)
         report['cli']['codex']={'exit_code':result.returncode,'incompatible_chat': 'unknown variant `chat`' in result.stderr or '`wire_api = "chat"` is no longer supported' in result.stderr, 'stderr':result.stderr.replace(key,'[REDACTED]')[:1500]}
         ccdir=out/'claude-cli'; ccdir.mkdir(exist_ok=True)
-        env.update(HOME=str(ccdir),CLAUDE_CONFIG_DIR=str(ccdir),ANTHROPIC_BASE_URL=base+'/anthropic',ANTHROPIC_AUTH_TOKEN=key,ANTHROPIC_MODEL=model,CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1')
+        env.update(HOME=str(ccdir),CLAUDE_CONFIG_DIR=str(ccdir),ANTHROPIC_BASE_URL=base+'/anthropic',ANTHROPIC_AUTH_TOKEN=key,ANTHROPIC_MODEL=model,MAX_THINKING_TOKENS='0',CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1')
         for label,prompt in [('text','Reply only CLI_OK.'),('bash','Use Bash to run printf CLI_TOOL_OK, then report result.')]:
             result=subprocess.run(['claude','--bare','-p','--output-format','stream-json','--verbose','--tools','Bash','--allowedTools','Bash(printf CLI_TOOL_OK)','--',prompt],cwd=ccdir,env=env,capture_output=True,text=True,timeout=120)
             events=[]
