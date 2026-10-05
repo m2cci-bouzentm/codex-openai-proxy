@@ -137,8 +137,6 @@ export function prepareChat(rawBody: any) {
   if (body.max_output_tokens || body.max_tokens || body.max_completion_tokens) {
     native.max_output_tokens = body.max_completion_tokens ?? body.max_tokens ?? body.max_output_tokens;
   }
-  if (body.temperature !== undefined) native.temperature = body.temperature;
-  if (body.top_p !== undefined) native.top_p = body.top_p;
   if (body.prompt_cache_retention) native.prompt_cache_retention = body.prompt_cache_retention;
 
   return { native, requested, validators, tools };
