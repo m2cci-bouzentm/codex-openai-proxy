@@ -33,7 +33,7 @@ export const providerResponseSchema = z.object({
   output: z.array(upstreamOutputItemSchema).optional().default(() => []),
   usage: upstreamUsageSchema.optional(),
   error: z.unknown().optional(),
-  incomplete_details: z.object({ reason: z.string() }).optional(),
+  incomplete_details: z.object({ reason: z.string() }).nullish(),
 }).passthrough();
 
 export const providerEventSchema = z.discriminatedUnion("type", [
