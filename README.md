@@ -133,6 +133,40 @@ client disconnects cancel inference. Error messages do not expose credentials.
 Discovery is live rather than a hardcoded model list. Keep deliberate legacy aliases
 in `src/models.ts` current when upstream retires targets.
 
+## Reproducible Docker verification
+
+```bash
+# Actual proxy container; ONLY external provider mocked. No login required.
+npm run test:http:docker
+# Negative control: cache accounting mutation must be detected.
+npm run test:http:mutation
+# Opt-in: real subscription inference; explicit authorization required.
+npm run test:e2e:docker -- --artifact-dir /absolute/private/path/codex-e2e
+```
+
+Both Docker runners reuse `scripts/http-cases.py`: all five public endpoints,
+JSON/SSE text, tool calls/results, images, authentication and removed-route 404s.
+Live runner discovers model ID, repeats a long identical prompt three times per
+protocol and requires positive upstream cached-token counters. This is provider
+prompt caching, never a local response cache. Provider fixture checks exact
+100 input / 40 cached tokens (Anthropic uncached input must equal 60).
+
+Live runner copies login into a chmod-700 artifact directory outside repository,
+mounts only that copy read-only, publishes a random loopback port, and leaves
+container running for inspection. Private `container.env` contains proxy key;
+never share it. `report.json` stores sanitized results. Claude Code runs with
+isolated HOME/config, bare mode and nonessential traffic disabled; Bash success
+requires actual tool_use/tool_result events. Installed Codex chat config rejection
+is recorded; no Responses endpoint is added. Docker/provider/cache errors fail
+visibly rather than skip. Credential refresh affects only copied credentials.
+Do not independently refresh original login while testing copies.
+
+Linux Docker daemon must support current containerd shim. A shim bootstrap API
+mismatch blocks container startup; these scripts never restart existing services.
+For a non-Docker diagnostic only, `python3 tests/provider-http-local-fixture.py`
+runs the same mock HTTP cases and verifies cache mutation against local Node.
+This diagnostic is not evidence of container or real-provider success.
+
 ## Verification
 
 ```bash

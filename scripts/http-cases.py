@@ -54,7 +54,10 @@ def suite(base, key, model, provider_observer=None):
         check(path + ':auth', lambda p=path: call(p, code=401, authenticated=False))
     for path in ['/v1/models', '/v1/chat/completions', '/v1/responses', '/responses', '/chat/completions', '/models']:
         check(path + ':removed', lambda p=path: call(p, {} if 'models' not in p else None, code=404))
-    for protocol, path in [('openai', '/openai/v1/chat/completions'), ('anthropic', '/anthropic/v1/messages'), ('codex', '/codex/responses')]:
+    check('/health', lambda: call('/health'))
+    for path in ['/codex/responses', '/codex/v1/responses', '/openai/v1/responses', '/anthropic/v1/messages/count_tokens']:
+        check(path + ':removed', lambda p=path: call(p, {}, code=404))
+    for protocol, path in [('openai', '/openai/v1/chat/completions'), ('anthropic', '/anthropic/v1/messages')]:
         def payload(mode, stream=False, p=protocol):
             if p == 'codex':
                 b = {'model': model, 'instructions': 'Follow instructions.', 'input': [{'role': 'user', 'content': [{'type': 'input_text', 'text': PROMPT}]}], 'store': False, 'stream': stream}

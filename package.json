@@ -5,6 +5,9 @@
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test tests/*.test.cjs",
+    "test:http:docker": "python3 scripts/provider-mocked-e2e.py",
+    "test:http:mutation": "python3 scripts/provider-mocked-e2e.py --no-build --mutation",
+    "test:e2e:docker": "python3 scripts/docker-e2e.py",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "setup": "bash setup.sh"
