@@ -48,8 +48,7 @@ This does not serve Claude models or promise the full Anthropic API surface.
 - GET `/anthropic/v1/models`: live Codex catalog in Anthropic list format.
   Codex does not expose model creation dates; `created_at` uses the Unix epoch
   as an explicit unknown-date sentinel, not a real model creation date.
-- POST `/anthropic/v1/messages/count_tokens`: 501, because exact token counting
-  is not available from this Codex backend. No approximate count is advertised.
+- Token counting is not supported; no `/anthropic/v1/messages/count_tokens` route is exposed.
 - Authentication accepts `x-api-key` or Bearer proxy key. Server OAuth stays private.
 
 Example isolated client invocation (replace placeholders; do not reuse upstream

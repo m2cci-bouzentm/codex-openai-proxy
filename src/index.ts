@@ -33,7 +33,7 @@ app.get("/openai/v1/models",auth,async(req,res)=>{
 app.post("/openai/v1/chat/completions",auth,chatCompletion);
 app.post("/anthropic/v1/messages",anthropicAuth,anthropicMessages);
 app.get("/anthropic/v1/models",anthropicAuth,anthropicModels);
-app.post("/anthropic/v1/messages/count_tokens",anthropicAuth,(_req,res)=>anthropicError(res,501,"api_error","Exact Anthropic token counting is not available for Codex models"));
+
 
 
 app.use(((err: any,_req: express.Request,res: express.Response,_next: express.NextFunction)=>{
