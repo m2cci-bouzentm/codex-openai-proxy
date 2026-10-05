@@ -46,7 +46,8 @@ test('proxy-auth CLI: status subcommand output envelope and security', () => {
     const statusConf = JSON.parse(resConf.stdout);
     assert.equal(statusConf.configured, true);
     assert.equal(statusConf.accountIdPresent, true);
-    assert.equal(statusConf.accountId, 'acc-test-789');
+    assert.equal(statusConf.accountId, undefined);
+    assert.equal(statusConf.accountIdPresent, true);
     assert.equal(resConf.stdout.includes('valid-access-token-123'), false);
     assert.equal(resConf.stdout.includes('valid-refresh-token-456'), false);
 
@@ -83,7 +84,8 @@ test('proxy-auth CLI: import via stdin and rejection of invalid/secrets in argv'
     const out = JSON.parse(resStdin.stdout);
     assert.equal(out.success, true);
     assert.equal(out.configured, true);
-    assert.equal(out.accountId, 'native-acc');
+    assert.equal(out.accountId, undefined);
+    assert.equal(out.accountIdPresent, true);
     assert.equal(resStdin.stdout.includes('native-ref-123'), false);
 
     // Rejection of invalid payload
@@ -147,7 +149,8 @@ process.exit(1);
     const loginOut = JSON.parse(resLogin.stdout);
     assert.equal(loginOut.success, true);
     assert.equal(loginOut.configured, true);
-    assert.equal(loginOut.accountId, 'login-acc-1');
+    assert.equal(loginOut.accountId, undefined);
+    assert.equal(loginOut.accountIdPresent, true);
     assert.equal(resLogin.stdout.includes('login-refresh-tok'), false);
 
     // Verify isolated CODEX_HOME was used underneath authDir
@@ -166,9 +169,14 @@ process.exit(1);
 
     // 2. --browser login invokes without --device-auth
     const resBrowser = spawnSync(process.execPath, [cliPath, 'login', '--browser'], { env, encoding: 'utf-8' });
-    assert.equal(resBrowser.status, 0);
-    const browserArgs = JSON.parse(fs.readFileSync(path.join(expectedCodexHome, 'invoked_args.json'), 'utf-8'));
-    assert.ok(!browserArgs.includes('--device-auth'));
+    if (fs.existsSync('/.dockerenv') || fs.existsSync('/run/.containerenv') || env.DOCKER === '1' || env.container) {
+      assert.notEqual(resBrowser.status, 0);
+      assert.match(resBrowser.stderr, /Docker|container/i);
+    } else {
+      assert.equal(resBrowser.status, 0);
+      const browserArgs = JSON.parse(fs.readFileSync(path.join(expectedCodexHome, 'invoked_args.json'), 'utf-8'));
+      assert.ok(!browserArgs.includes('--device-auth'));
+    }
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

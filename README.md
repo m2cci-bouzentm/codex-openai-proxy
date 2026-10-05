@@ -4,31 +4,42 @@ ChatGPT/Codex OAuth proxy for OpenAI Chat Completions and Anthropic-compatible c
 
 ## Auth & Credential Management (`proxy-auth`)
 
-Credentials live in canonical `/data/auth.json` (configured via `PROXY_AUTH_DIR`).
-Authentication is managed via the CLI executable `proxy-auth` with subcommands `login`, `import`, and `status`.
+Authentication is managed via `proxy-auth login`, `import`, and `status`.
+Docker credentials live in canonical `/data/auth.json`. Compose always sets
+`PROXY_AUTH_DIR=/data` inside containers, regardless of the host setting.
+`PROXY_AUTH_VOLUME` selects the mount source: the default named volume
+`codex-proxy-data`, or an absolute host directory for a bind mount. For native
+execution, `PROXY_AUTH_DIR` selects the local credential directory; it does not
+select the Docker mount. Login/import one-off containers share the server's mount.
+Prefer the named volume. A bind-mounted credential directory must be owned by
+the container's user (root in this image), mode `0700`, without symlink path
+components; `auth.json` must be mode `0600`. Host-native execution instead
+requires ownership by the native process user.
 
 ### Interactive Login
-Run native Codex interactive login inside the container (uses an isolated CLI configuration directory beneath the auth directory):
+The image includes official Codex CLI pinned to `0.160.0`. Login uses an isolated
+CLI configuration directory beneath the auth directory.
 ```bash
-# Docker Compose interactive device login (default):
-docker compose run --rm codex-proxy proxy-auth login --device
-
-# Or interactive browser login:
-docker compose run --rm codex-proxy proxy-auth login --browser
+# Docker device login (default; explicit --device is also supported):
+docker compose run --rm codex-proxy proxy-auth login
 ```
+Complete the displayed device verification in your host browser. Container
+browser login (`--browser`) is unsupported and rejected: its callback listener
+is not exposed. For browser login, run `proxy-auth login --browser` natively,
+then import those credentials into the Docker volume.
 
 ### Import Credentials
 Import existing native Codex credentials (`{"tokens": {"id_token", "access_token", "refresh_token"}}`) or normalized OAuth credentials (`{"type": "oauth", "access", "refresh", "expires", "accountId"}`):
 ```bash
 # Via file mount:
-docker compose run --rm -v $(pwd)/import:/imports:ro codex-proxy proxy-auth import --file /imports/auth.json
+docker compose run --rm -v "$(pwd)/import:/imports:ro" codex-proxy proxy-auth import --file /imports/auth.json
 
-# Via stdin:
-cat auth.json | docker compose run --rm -T codex-proxy proxy-auth import -
+# Via stdin (avoid placing tokens in shell arguments):
+docker compose run --rm -T codex-proxy proxy-auth import - < auth.json
 ```
 
 ### Check Status
-Inspect credential presence, method, expiration, and account ID without revealing token secrets:
+Inspect credential presence, method, expiration, and account-ID presence without revealing tokens or account identifiers:
 ```bash
 docker compose run --rm codex-proxy proxy-auth status
 ```
@@ -221,6 +232,7 @@ The full real client matrix across Claude Code and OpenCode confirmed:
 
 ```bash
 npm test
+npm run test:auth:docker  # builds unique current image; local synthetic provider only
 npm audit
 # Opt-in REAL requests: consumes subscription usage, uses existing server login.
 python scripts/e2e.py --output /tmp/codex-proxy-e2e.json

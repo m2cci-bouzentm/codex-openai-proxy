@@ -1,134 +1,112 @@
 import fs from "fs";
-import path from "path";
 import * as storage from "./storage";
-import { parsePayload } from "./jwt";
 
-const ISSUER = "https://auth.openai.com";
+const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
-const TOKEN_URL = `${ISSUER}/oauth/token`;
-
 export { AUTH_FILE, CODEX_CLI_AUTH } from "./storage";
 
-interface CodexCliAuth {
-  tokens: {
-    id_token: string;
-    access_token: string;
-    refresh_token: string;
-  };
-}
-
 interface TokenResponse {
-  id_token: string;
+  id_token?: string;
   access_token: string;
-  refresh_token: string;
+  refresh_token?: string;
   expires_in?: number;
 }
+interface Snapshot {
+  source: string;
+  generation: string;
+  entry: storage.OAuthEntry;
+}
+export interface AuthResult { accessToken: string; accountId: string; }
 
-function extractAccountIdFromClaims(claims: Record<string, unknown>): string | undefined {
-  return storage.extractAccountIdFromClaims(claims);
+let currentAuth: Snapshot | null = null;
+let canonicalSeen = false;
+const refreshes = new Map<string, Promise<void>>();
+
+// Include bytes as well as inode/timestamps: in-place edits may retain size/mtime.
+function fingerprint(source: string): string {
+  storage.ensureAuthDir();
+  const before = fs.lstatSync(source);
+  const raw = storage.readCredentialFile(source);
+  const after = fs.lstatSync(source);
+  const identity = (stat: fs.Stats) => [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs].join(":");
+  if (identity(before) !== identity(after)) throw new Error("Credentials changed while reading");
+  return `${source}\n${identity(after)}\n${raw}`;
 }
 
-function extractAccountId(tokens: { id_token?: string; access_token?: string }): string | undefined {
-  return storage.extractAccountId(tokens);
-}
-
-function seedFromCodexCli(): storage.OAuthEntry | null {
-  if (!fs.existsSync(storage.CODEX_CLI_AUTH)) return null;
+function loadCanonical(): Snapshot | null {
+  const source = storage.getAuthFile();
   try {
-    const raw: CodexCliAuth = JSON.parse(fs.readFileSync(storage.CODEX_CLI_AUTH, "utf-8"));
-    const accessClaims = parsePayload(raw.tokens.access_token);
-    const entry: storage.OAuthEntry = {
-      type: "oauth",
-      access: raw.tokens.access_token,
-      refresh: raw.tokens.refresh_token,
-      expires: ((accessClaims.exp as number) || 0) * 1000,
-      accountId: extractAccountId(raw.tokens),
-    };
-    storage.write(entry);
-    return entry;
-  } catch {
-    return null;
-  }
+    const generation = fingerprint(source);
+    const entry = storage.read();
+    if (!entry || fingerprint(source) !== generation) return null;
+    return { source, generation, entry };
+  } catch { return null; }
+}
+
+function checkAndReloadAuth(): void {
+  const source = storage.getAuthFile();
+  let missing = false;
+  try { fs.lstatSync(source); canonicalSeen = true; }
+  catch (err: any) { missing = err.code === "ENOENT"; if (!missing) canonicalSeen = true; }
+  currentAuth = loadCanonical();
+  if (currentAuth || canonicalSeen || !missing) return;
+  try {
+    // Use storage's bounded, no-follow reader and native schema/JWT parser.
+    const native = storage.parseCredentialJson(storage.readCredentialFile(storage.CODEX_CLI_AUTH));
+    if (!native || typeof native !== "object" || !("tokens" in native)) return;
+    storage.normalizeAndSave(native);
+    canonicalSeen = true;
+    currentAuth = loadCanonical();
+  } catch { currentAuth = null; }
 }
 
 async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
   const resp = await fetch(TOKEN_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-      client_id: CLIENT_ID,
-    }).toString(),
+    body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken, client_id: CLIENT_ID }).toString(),
   });
   if (!resp.ok) throw new Error(`Token refresh failed: ${resp.status}`);
-  return resp.json();
+  return await resp.json() as TokenResponse;
 }
 
-let currentAuth: storage.OAuthEntry | null = null;
-let lastAuthFileStat: { mtimeMs: number; ino: number; size: number } | null = null;
-let refreshPromise: Promise<void> | null = null;
-
-export interface AuthResult {
-  accessToken: string;
-  accountId: string;
-}
-
-function checkAndReloadAuth(): void {
-  const authFile = storage.getAuthFile();
-  if (fs.existsSync(authFile)) {
-    try {
-      const stat = fs.statSync(authFile);
-      const isChanged =
-        !lastAuthFileStat ||
-        stat.mtimeMs !== lastAuthFileStat.mtimeMs ||
-        stat.ino !== lastAuthFileStat.ino ||
-        stat.size !== lastAuthFileStat.size;
-
-      if (isChanged || !currentAuth) {
-        const loaded = storage.read();
-        if (loaded) {
-          currentAuth = loaded;
-          lastAuthFileStat = { mtimeMs: stat.mtimeMs, ino: stat.ino, size: stat.size };
-        }
-      }
-    } catch {
-      // In case of read/stat collision during atomic rename
-    }
-  } else if (!currentAuth) {
-    // Try seeding from CODEX_CLI_AUTH if canonical auth.json does not exist yet
-    currentAuth = seedFromCodexCli();
-  }
+function unchanged(snapshot: Snapshot): boolean {
+  if (storage.getAuthFile() !== snapshot.source) return false;
+  try { return fingerprint(snapshot.source) === snapshot.generation; }
+  catch { return false; }
 }
 
 export async function getAuth(): Promise<AuthResult> {
   checkAndReloadAuth();
+  const snapshot = currentAuth;
+  if (!snapshot) throw new Error(`No credentials configured in ${storage.getAuthFile()}`);
+  const entry = snapshot.entry;
+  if (entry.access && entry.expires > Date.now()) return { accessToken: entry.access, accountId: entry.accountId || "" };
+  if (!entry.refresh) throw new Error("Credentials expired and no refresh token configured");
 
-  if (!currentAuth) {
-    throw new Error(`No credentials configured in ${storage.getAuthFile()}`);
-  }
-
-  const needsRefresh = !currentAuth.access || currentAuth.expires < Date.now();
-  if (!needsRefresh) return { accessToken: currentAuth.access, accountId: currentAuth.accountId || "" };
-
-  refreshPromise ??= refreshAccessToken(currentAuth.refresh)
-    .then((tokens) => {
-      currentAuth = {
-        type: "oauth",
+  let pending = refreshes.get(snapshot.generation);
+  if (!pending) {
+    pending = (async () => {
+      let tokens: TokenResponse;
+      try { tokens = await refreshAccessToken(entry.refresh); }
+      catch (error) { if (!unchanged(snapshot)) return; throw error; }
+      // Never save a response for a deleted/replaced/invalid credential generation.
+      if (!unchanged(snapshot)) return;
+      if (typeof tokens.access_token !== "string" || !tokens.access_token) throw new Error("Invalid refreshed credentials");
+      const updated: storage.OAuthEntry = {
+        ...entry,
         access: tokens.access_token,
-        refresh: tokens.refresh_token || currentAuth!.refresh,
+        refresh: tokens.refresh_token || entry.refresh,
         expires: Date.now() + (tokens.expires_in ?? 3600) * 1000,
-        accountId: extractAccountId(tokens) || currentAuth!.accountId,
+        accountId: storage.extractAccountId(tokens) || entry.accountId,
       };
-      storage.write(currentAuth);
-      const authFile = storage.getAuthFile();
-      if (fs.existsSync(authFile)) {
-        const stat = fs.statSync(authFile);
-        lastAuthFileStat = { mtimeMs: stat.mtimeMs, ino: stat.ino, size: stat.size };
-      }
-    })
-    .finally(() => { refreshPromise = null; });
-
-  await refreshPromise;
-  return { accessToken: currentAuth!.access, accountId: currentAuth!.accountId || "" };
+      storage.write(updated);
+      // Read normalized disk entry, never cache pre-normalization metadata/stat.
+      currentAuth = loadCanonical();
+    })().finally(() => { refreshes.delete(snapshot.generation); });
+    refreshes.set(snapshot.generation, pending);
+  }
+  await pending;
+  // A concurrent import may need its own refresh; never return the old response.
+  return getAuth();
 }

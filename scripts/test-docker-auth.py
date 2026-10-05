@@ -3,26 +3,82 @@ import base64
 import json
 import os
 import shutil
+import importlib.util
+from pathlib import Path
+import socket
+import threading
+import uuid
+from http.server import ThreadingHTTPServer
 import subprocess
 import sys
 import tempfile
 import time
 import urllib.request
 
-IMAGE_NAME = "codex-openai-proxy:test"
+ROOT = Path(__file__).resolve().parents[1]
+IMAGE_NAME = "codex-proxy:auth-test-" + uuid.uuid4().hex
 
-def run_cmd(cmd, check=True, capture=True):
-    p = subprocess.run(cmd, stdout=subprocess.PIPE if capture else None, stderr=subprocess.PIPE if capture else None, text=True)
+def run_cmd(cmd, check=True, capture=True, stdin=None):
+    p = subprocess.run(cmd, input=stdin, stdout=subprocess.PIPE if capture else None, stderr=subprocess.PIPE if capture else None, text=True)
     if check and p.returncode != 0:
         raise RuntimeError(f"Command {cmd} failed with code {p.returncode}: {p.stderr}")
     return p
 
 def main():
-    print("=== Running Docker Integration Test for proxy-auth & /data/auth.json ===")
+    print("=== Running Docker Integration Test for proxy-auth & /data/auth.json ===", flush=True)
+    # Never depend on a pre-existing test tag: build current source every run.
+    run_cmd(["docker", "build", "-t", IMAGE_NAME, str(ROOT)], capture=False)
 
-    data_dir = tempfile.mkdtemp(prefix="codex_proxy_data_")
+    env = {**os.environ, "PROXY_AUTH_DIR": "/host/auth-must-not-be-mounted"}
+    env.pop("PROXY_AUTH_VOLUME", None)
+    compose_cmd = ["docker", "compose", "--project-directory", str(ROOT), "--env-file", str(ROOT / ".env.example"), "config", "--format", "json", "--no-env-resolution"]
+    def compose():
+        p = subprocess.run(compose_cmd, env=env, text=True, capture_output=True, check=True)
+        return json.loads(p.stdout)["services"]["codex-proxy"]
+    service = compose()
+    assert service["environment"]["PROXY_AUTH_DIR"] == "/data"
+    mount = next(v for v in service["volumes"] if v["target"] == "/data")
+    assert mount["type"] == "volume" and mount["source"] == "codex-proxy-data", mount
+    env["PROXY_AUTH_VOLUME"] = "/tmp/proxy-auth-compose-fixture"
+    mount = next(v for v in compose()["volumes"] if v["target"] == "/data")
+    assert mount["type"] == "bind" and mount["source"] == env["PROXY_AUTH_VOLUME"], mount
+    help_text = run_cmd(["docker", "run", "--rm", IMAGE_NAME, "codex", "login", "--help"]).stdout
+    assert "--device-auth" in help_text, help_text
+    assert run_cmd(["docker", "run", "--rm", IMAGE_NAME, "codex", "--version"]).stdout.strip() == "codex-cli 0.160.0"
+    entrypoint = run_cmd(["docker", "run", "--rm", IMAGE_NAME, "cat", "/usr/local/bin/docker-entrypoint.sh"]).stdout
+    assert 'exec proxy-auth' in entrypoint and 'exec "$@"' in entrypoint
+    spec = importlib.util.spec_from_file_location("provider_fixture", ROOT / "scripts/provider-mocked-e2e.py")
+    fixture = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fixture)
+    observed = []
+    class Provider(fixture.Provider):
+        def do_POST(self):
+            observed.append((self.headers.get("Authorization"), self.headers.get("ChatGPT-Account-Id")))
+            super().do_POST()
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Provider)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    base = f"http://127.0.0.1:{port}"
+    def request(token, account):
+        before = len(observed)
+        body = json.dumps({"model": "gpt-6-astra", "messages": [{"role": "user", "content": "fixture"}]}).encode()
+        req = urllib.request.Request(base + "/openai/v1/chat/completions", data=body,
+              headers={"Authorization": "Bearer test-docker-key", "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            result = json.load(response)
+        assert result["choices"][0]["message"]["content"] == "PROXY_HTTP_OK", result
+        assert len(observed) == before + 1, observed
+        assert observed[-1] == (f"Bearer {token}", account), observed[-1]
+    def state():
+        info = json.loads(run_cmd(["docker", "inspect", container_name]).stdout)[0]
+        return info["State"]["Pid"], info["State"]["StartedAt"], info["RestartCount"]
+
+    data_dir = f"codex-proxy-auth-data-{uuid.uuid4().hex}"
+    run_cmd(["docker", "volume", "create", data_dir])
     import_dir = tempfile.mkdtemp(prefix="codex_proxy_import_")
-    container_name = f"codex-proxy-int-test-{int(time.time())}"
+    container_name = f"codex-proxy-int-test-{uuid.uuid4().hex}"
 
     try:
         # Step 1: Initial status in container on empty volume
@@ -70,7 +126,7 @@ def main():
         import_res = json.loads(p_import.stdout)
         assert import_res.get("success") is True
         assert import_res.get("configured") is True
-        assert import_res.get("accountId") == "docker-acc-99"
+        assert import_res.get("accountIdPresent") is True
         assert "docker-native-refresh-token" not in p_import.stdout
 
         # Verify container sees configured file and mode is 0600
@@ -88,8 +144,10 @@ def main():
         run_cmd([
             "docker", "run", "-d",
             "--name", container_name,
-            "-p", "13033:3033",
-            "-e", "PORT=3033",
+            "--network", "host",
+            "-e", f"PORT={port}",
+            "-e", "PROXY_AUTH_DIR=/data",
+            "-e", f"CODEX_UPSTREAM_BASE_URL=http://127.0.0.1:{server.server_port}",
             "-e", "API_KEY=test-docker-key",
             "-v", f"{data_dir}:/data",
             IMAGE_NAME
@@ -99,7 +157,7 @@ def main():
         ready = False
         for _ in range(30):
             try:
-                req = urllib.request.Request("http://127.0.0.1:13033/health")
+                req = urllib.request.Request(base + "/health")
                 with urllib.request.urlopen(req, timeout=1) as resp:
                     if resp.status == 200:
                         ready = True
@@ -107,6 +165,9 @@ def main():
             except Exception:
                 time.sleep(0.5)
         assert ready, "Proxy container failed to become ready"
+
+        initial_state = state()
+        request(native_jwt, "docker-acc-99")
 
         # Step 4: Live import while server container is running
         print("[4] Testing live import update while server is running...")
@@ -130,35 +191,38 @@ def main():
 
         # Run proxy-auth import in one-off container mounting same volume
         p_live_import = run_cmd([
-            "docker", "run", "--rm",
+            "docker", "run", "--rm", "-i",
             "-v", f"{data_dir}:/data",
-            "-v", f"{import_dir}:/imports:ro",
             IMAGE_NAME,
-            "proxy-auth", "import", "--file", "/imports/auth.json"
-        ])
+            "import", "-"
+        ], stdin=json.dumps(updated_creds))
         live_res = json.loads(p_live_import.stdout)
         assert live_res.get("success") is True
-        assert live_res.get("accountId") == "docker-acc-reloaded"
+        assert live_res.get("accountIdPresent") is True
 
         # Verify proxy-auth status sees new account
         p_new_status = run_cmd([
             "docker", "run", "--rm",
             "-v", f"{data_dir}:/data",
             IMAGE_NAME,
-            "proxy-auth", "status"
+            "status"
         ])
         new_status = json.loads(p_new_status.stdout)
         assert new_status.get("configured") is True
-        assert new_status.get("accountId") == "docker-acc-reloaded"
+        assert new_status.get("accountIdPresent") is True
 
-        print("=== Docker integration test PASSED! ===")
+        request(new_jwt, "docker-acc-reloaded")
+        assert state() == initial_state, (initial_state, state())
+        assert initial_state[2] == 0, initial_state
+        print(f"=== Docker integration test PASSED! image={IMAGE_NAME} PID={initial_state[0]} restarts=0; Authorization/account changed ===")
 
     finally:
         subprocess.run(["docker", "rm", "-f", container_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        # Clear volume dir with docker if root owned
-        subprocess.run(["docker", "run", "--rm", "-v", f"{data_dir}:/data", "node:22-slim", "rm", "-rf", "/data/auth.json", "/data/.codex"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        shutil.rmtree(data_dir, ignore_errors=True)
+        run_cmd(["docker", "volume", "rm", data_dir], check=False)
         shutil.rmtree(import_dir, ignore_errors=True)
+        server.shutdown()
+        server.server_close()
+        run_cmd(["docker", "image", "rm", IMAGE_NAME], check=False)
 
 if __name__ == "__main__":
     main()

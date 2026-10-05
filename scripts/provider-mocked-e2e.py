@@ -65,10 +65,11 @@ def run(image, mutation=False):
     server = ThreadingHTTPServer(('127.0.0.1', 0), Provider)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     name = 'proxy-http-fixture-' + uuid.uuid4().hex[:12]
+    volume = name + '-auth'
     with tempfile.TemporaryDirectory(prefix='proxy-http-') as directory:
         temp = pathlib.Path(directory)
         # Explicitly synthetic, unexpired fixture; never reads home/auth credentials.
-        (temp / 'auth.json').write_text(json.dumps({'type': 'oauth', 'access': 'synthetic-provider-fixture', 'refresh': 'unused-fixture', 'expires': 4102444800000, 'accountId': 'fixture-account'}))
+        auth = {'type': 'oauth', 'access': 'synthetic-provider-fixture', 'refresh': 'unused-fixture', 'expires': 4102444800000, 'accountId': 'fixture-account'}
         mount = []
         if mutation:
             compiled = docker('run', '--rm', '--entrypoint', 'cat', image, '/app/dist/anthropic.js')
@@ -77,11 +78,18 @@ def run(image, mutation=False):
             (temp / 'anthropic.js').write_text(compiled.replace(original, 'input_tokens: (u.input_tokens ?? 0)', 1))
             mount = ['-v', f'{temp / "anthropic.js"}:/app/dist/anthropic.js:ro']
         try:
+            docker('volume', 'create', volume)
+            # Initialize as image's runtime user: private, owned, writable canonical directory.
+            subprocess.run(['docker', 'run', '--rm', '-i', '--network', 'none',
+                            '-v', f'{volume}:/data:rw', '--entrypoint', 'node', image, '-e',
+                            "const fs = require('fs'); fs.chmodSync('/data', 0o700); "
+                            "fs.writeFileSync('/data/auth.json', fs.readFileSync(0), {mode: 0o600});"],
+                           input=json.dumps(auth), text=True, check=True)
             # Linux host networking keeps fake provider loopback-only.
             import socket
             with socket.socket() as sock:
                 sock.bind(('127.0.0.1', 0)); port = sock.getsockname()[1]
-            docker('run', '-d', '--name', name, '--network', 'host', '-e', f'PORT={port}', '-e', 'API_KEY=synthetic-http-fixture', '-e', 'CODEX_PROXY_HOME=/fixture', '-e', f'CODEX_UPSTREAM_BASE_URL=http://127.0.0.1:{server.server_port}', '-v', f'{temp}:/fixture:ro', *mount, image)
+            docker('run', '-d', '--name', name, '--network', 'host', '-e', f'PORT={port}', '-e', 'API_KEY=synthetic-http-fixture', '-e', 'PROXY_AUTH_DIR=/data', '-e', 'CODEX_PROXY_HOME=/data', '-e', f'CODEX_UPSTREAM_BASE_URL=http://127.0.0.1:{server.server_port}', '-v', f'{volume}:/data:rw', *mount, image)
             base = f'http://127.0.0.1:{port}'
             for attempt in range(100):
                 try:
@@ -92,18 +100,20 @@ def run(image, mutation=False):
             return cases.suite(base, 'synthetic-http-fixture', 'gpt-6-astra', provider_observer=lambda: CAPTURE)
         finally:
             subprocess.run(['docker', 'rm', '-f', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['docker', 'volume', 'rm', volume], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             server.shutdown(); server.server_close()
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--image', default='codex-proxy:http-fixture')
-    parser.add_argument('--no-build', action='store_true')
+    parser.add_argument('--image', help='Explicit image tag; otherwise build a unique current-source image')
+    parser.add_argument('--no-build', action='store_true', help='Reuse --image; without --image still builds current source')
     parser.add_argument('--mutation', action='store_true')
     args = parser.parse_args()
-    if not args.no_build:
-        subprocess.run(['docker', 'build', '-t', args.image, str(ROOT)], check=True, stdout=subprocess.DEVNULL)
-    report = run(args.image, args.mutation)
+    image = args.image or ('codex-proxy:http-fixture-' + uuid.uuid4().hex)
+    if not args.no_build or args.image is None:
+        subprocess.run(['docker', 'build', '-t', image, str(ROOT)], check=True, stdout=subprocess.DEVNULL)
+    report = run(image, args.mutation)
     print(json.dumps(report, indent=2))
     if args.mutation:
         caught = any(c['name'] == 'anthropic:text:json' and c['status'] == 'failed' and 'cache' in c.get('error', '') for c in report['cases'])
