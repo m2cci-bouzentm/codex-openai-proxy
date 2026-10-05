@@ -22,17 +22,30 @@ spec.loader.exec_module(cases)
 CAPTURE = []
 
 
+MOCK_MODELS = [
+    {'slug': 'gpt-6-astra', 'display_name': 'GPT-6-Astra', 'context_window': 272000},
+    {'slug': 'gpt-6-sol', 'display_name': 'GPT-6-Sol', 'context_window': 272000},
+    {'slug': 'gpt-6-luna', 'display_name': 'GPT-6-Luna', 'context_window': 272000},
+    {'slug': 'gpt-reserve', 'display_name': 'GPT-Reserve', 'context_window': 272000},
+    {'slug': 'gpt-5.6-sol', 'display_name': 'GPT-5.6-Sol', 'context_window': 272000},
+    {'slug': 'gpt-5.6-terra', 'display_name': 'GPT-5.6-Terra', 'context_window': 272000},
+    {'slug': 'gpt-5.6-luna', 'display_name': 'GPT-5.6-Luna', 'context_window': 272000},
+    {'slug': 'gpt-5.5', 'display_name': 'GPT-5.5', 'context_window': 272000},
+    {'slug': 'codex-auto-review', 'display_name': 'Codex Auto Review', 'context_window': 272000},
+]
+
+
 class Provider(BaseHTTPRequestHandler):
     def log_message(self, format, *args): pass
     def do_GET(self):
         self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers()
-        self.wfile.write(json.dumps({'models': [{'slug': 'gpt-5.4', 'display_name': 'Fixture model', 'context_window': 200000}]}).encode())
+        self.wfile.write(json.dumps({'models': MOCK_MODELS}).encode())
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         CAPTURE.append({'path': self.path, 'body': body})
         tool = isinstance(body.get('tool_choice'), dict) and body['tool_choice'].get('name') == 'echo'
         item = {'type': 'function_call', 'id': 'fc_fixture', 'call_id': 'call_mock', 'name': 'echo', 'arguments': '{"value":"PROXY_HTTP_OK"}', 'status': 'completed'} if tool else {'type': 'message', 'id': 'msg_fixture', 'role': 'assistant', 'status': 'completed', 'content': [{'type': 'output_text', 'text': 'PROXY_HTTP_OK', 'annotations': []}]}
-        response = {'id': 'resp_fixture', 'object': 'response', 'model': 'gpt-5.4', 'status': 'completed', 'output': [item], 'usage': {'input_tokens': 100, 'output_tokens': 5, 'total_tokens': 105, 'input_tokens_details': {'cached_tokens': 40}}}
+        response = {'id': 'resp_fixture', 'object': 'response', 'model': body.get('model', 'gpt-6-astra'), 'status': 'completed', 'output': [item], 'usage': {'input_tokens': 100, 'output_tokens': 5, 'total_tokens': 105, 'input_tokens_details': {'cached_tokens': 40}}}
         events = [{'type': 'response.created', 'response': {**response, 'output': [], 'status': 'in_progress'}}, {'type': 'response.output_item.added', 'output_index': 0, 'item': {**item, 'arguments': ''} if tool else {**item, 'content': []}}]
         if tool:
             events += [{'type': 'response.function_call_arguments.delta', 'item_id': item['id'], 'output_index': 0, 'delta': item['arguments']}, {'type': 'response.function_call_arguments.done', 'item_id': item['id'], 'output_index': 0, 'arguments': item['arguments']}]
@@ -76,7 +89,7 @@ def run(image, mutation=False):
                 except OSError: pass
                 time.sleep(.1)
             else: raise RuntimeError('Docker proxy failed readiness')
-            return cases.suite(base, 'synthetic-http-fixture', 'gpt-5.4', provider_observer=lambda: CAPTURE)
+            return cases.suite(base, 'synthetic-http-fixture', 'gpt-6-astra', provider_observer=lambda: CAPTURE)
         finally:
             subprocess.run(['docker', 'rm', '-f', name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             server.shutdown(); server.server_close()

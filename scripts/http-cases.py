@@ -48,7 +48,10 @@ def suite(base, key, model, provider_observer=None):
     def catalog(path):
         _, text = call(path)
         data = json.loads(text)
-        expect(any(item['id'] == model for item in data['data']), 'requested model absent from catalog')
+        catalog_ids = [item['id'] for item in data['data']]
+        expect(model in catalog_ids, 'requested model absent from catalog')
+        for expected in ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-reserve', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'codex-auto-review']:
+            expect(expected in catalog_ids, f'catalog model {expected} absent from {path}')
     for path in ['/openai/v1/models', '/anthropic/v1/models']:
         check(path + ':models', lambda p=path: catalog(p))
         check(path + ':auth', lambda p=path: call(p, code=401, authenticated=False))

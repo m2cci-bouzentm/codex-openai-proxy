@@ -179,6 +179,14 @@ tool execution and four repeated cache probes. Three probes reported 8704 cache
 read tokens; one provider-routed repeat reported zero, so callers must consume
 actual per-request usage rather than assume every repeat is a hit.
 
+The full real client matrix across Claude Code and OpenCode confirmed:
+- Claude Code bare mode exposes exactly 3/3 tools: `Bash`, `Edit`, `Read` (with `Write`, `Glob`, `Grep` unexposed in bare mode).
+- OpenCode exposes 9/9 standard tools: `bash`, `read`, `glob`, `grep`, `apply_patch`, `todowrite`, `skill`, `task`, `webfetch`. In GPT mode OpenCode maps file modifications to `apply_patch` instead of `edit`/`write`.
+- Both `/openai/v1/models` and `/anthropic/v1/models` return all 9/9 catalog IDs (`gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-reserve`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `codex-auto-review`).
+- Two-model switching forwards exact chosen IDs (`gpt-6-astra` vs `gpt-6-sol`) without alias interference.
+- Caching behavior verified across 17 positive matrix records totaling 152,320 aggregate cache read tokens without double-counting against uncached input tokens.
+- OpenCode dynamic model discovery requires static configuration; dynamic discovery from the proxy provider fails (`Provider not found: proxy`), so static model declarations are mandatory.
+
 ## Verification
 
 ```bash

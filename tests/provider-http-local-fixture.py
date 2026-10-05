@@ -41,7 +41,7 @@ def run(mutation):
                 try:
                     runner.cases.request(f'http://127.0.0.1:{port}', '', '/health'); break
                 except OSError: time.sleep(.1)
-            return runner.cases.suite(f'http://127.0.0.1:{port}', 'synthetic', 'gpt-5.4', lambda: runner.CAPTURE)
+            return runner.cases.suite(f'http://127.0.0.1:{port}', 'synthetic', 'gpt-6-astra', lambda: runner.CAPTURE)
         finally:
             process.terminate(); process.wait(); server.shutdown(); server.server_close()
 
