@@ -103,6 +103,9 @@ test('Zod boundary schemas reject malformed/nested/unknown input and validate li
     ]
   };
   assert.doesNotThrow(() => providerSchema.modelsResponseSchema.parse(validModelCatalog));
+  assert.doesNotThrow(() => providerSchema.providerResponseSchema.parse({
+    id: 'resp-live-shape', status: 'completed', output: [], incomplete_details: null,
+  }));
 });
 
 test('accepted OpenAI sampling fields are not forwarded to Codex upstream', () => {
