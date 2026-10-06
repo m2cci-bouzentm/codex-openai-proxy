@@ -156,6 +156,20 @@ It neither deploys nor modifies permanent Claude Code config.
   `max_completion_tokens`, and `max_output_tokens` map to upstream output limits.
   Other unlisted OpenAI parameters are not guaranteed.
 
+## System prompt contract
+
+Codex is the permissive case: OpenAI allows third-party clients on Codex subscriptions and does not
+filter client identity text, so this proxy injects **no fixed system prompt**.
+
+- `/openai/v1`: client `system`/`developer` messages become the Codex `instructions` field
+  unchanged (joined in order). When a client sends none, `instructions` is
+  `You are a helpful assistant.` because Codex requires a non-empty value.
+- `/anthropic`: Anthropic `system` maps to the same `instructions` field.
+
+Sister proxies: `agy-openai-proxy` and `claude-ai-proxy` (`/openai/v1`) keep their official client
+prompt as the only system content and move client instructions into the first user turn;
+`claude-ai-proxy` `/anthropic` is a pure pass-through.
+
 ## Architecture & Shared Contract
 
 Canonical layers match Claude proxy so provider adapters can eventually live in one repository:
