@@ -1,10 +1,10 @@
-import "dotenv/config";
-import { envConfigSchema } from "../schemas/config.schema";
+import "dotenv/config"
+import { envConfigSchema } from "../schemas/config.schema"
 
-const parsed = envConfigSchema.safeParse(process.env);
+const parsed = envConfigSchema.safeParse(process.env)
 if (!parsed.success) {
-  const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ");
-  throw new Error(`Configuration error: ${issues}`);
+  const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join(", ")
+  throw new Error(`Configuration error: ${issues}`)
 }
 
 export const config = {
@@ -18,4 +18,4 @@ export const config = {
   codexHome: parsed.data.CODEX_HOME,
   modelAliases: parsed.data.MODEL_ALIASES,
   defaultModel: parsed.data.DEFAULT_MODEL,
-} as const;
+} as const

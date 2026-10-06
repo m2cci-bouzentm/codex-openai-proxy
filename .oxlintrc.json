@@ -1,0 +1,32 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "options": {
+    "typeAware": true
+  },
+  "categories": {
+    "suspicious": "warn"
+  },
+  "rules": {
+    "typescript/no-base-to-string": "warn",
+    "typescript/no-floating-promises": "warn",
+    "typescript/no-misused-spread": "warn",
+    "no-control-regex": "off",
+    "no-shadow": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/no-array-sort": "off",
+    "unicorn/no-array-reverse": "off",
+    "typescript/no-unsafe-type-assertion": "off"
+  },
+  "ignorePatterns": ["**/node_modules", "**/dist", "**/*.d.ts"],
+  "overrides": [
+    {
+      "files": ["tests/**", "scripts/**"],
+      "rules": {
+        "typescript/no-floating-promises": "off",
+        "typescript/consistent-return": "off",
+        "typescript/restrict-template-expressions": "off",
+        "unicorn/no-invalid-fetch-options": "off"
+      }
+    }
+  ]
+}

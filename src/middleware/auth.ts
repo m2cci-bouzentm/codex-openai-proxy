@@ -1,15 +1,15 @@
-import type { RequestHandler } from "express";
+import type { RequestHandler } from "express"
 
 export const authenticate: RequestHandler = (req, res, next) => {
-  const key = process.env.API_KEY;
+  const key = process.env.API_KEY
   if (!key) {
     res.status(503).json({
       error: {
         message: "Proxy API key not configured",
         type: "configuration_error",
       },
-    });
-    return;
+    })
+    return
   }
   if (req.headers.authorization !== `Bearer ${key}`) {
     res.status(401).json({
@@ -17,14 +17,14 @@ export const authenticate: RequestHandler = (req, res, next) => {
         message: "Invalid API key",
         type: "auth_error",
       },
-    });
-    return;
+    })
+    return
   }
-  next();
-};
+  next()
+}
 
 export const authenticateAnthropic: RequestHandler = (req, res, next) => {
-  const key = process.env.API_KEY;
+  const key = process.env.API_KEY
   if (!key) {
     res.status(503).json({
       type: "error",
@@ -32,12 +32,10 @@ export const authenticateAnthropic: RequestHandler = (req, res, next) => {
         type: "api_error",
         message: "Proxy API key not configured",
       },
-    });
-    return;
+    })
+    return
   }
-  const valid =
-    req.headers.authorization === `Bearer ${key}` ||
-    req.headers["x-api-key"] === key;
+  const valid = req.headers.authorization === `Bearer ${key}` || req.headers["x-api-key"] === key
   if (!valid) {
     res.status(401).json({
       type: "error",
@@ -45,12 +43,12 @@ export const authenticateAnthropic: RequestHandler = (req, res, next) => {
         type: "authentication_error",
         message: "Invalid API key",
       },
-    });
-    return;
+    })
+    return
   }
-  next();
-};
+  next()
+}
 
 // Aliases for compatibility
-export const auth = authenticate;
-export const anthropicAuth = authenticateAnthropic;
+export const auth = authenticate
+export const anthropicAuth = authenticateAnthropic

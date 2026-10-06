@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod"
 
 export const envConfigSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3033),
@@ -11,6 +11,6 @@ export const envConfigSchema = z.object({
   CODEX_HOME: z.string().optional(),
   MODEL_ALIASES: z.string().optional(),
   DEFAULT_MODEL: z.string().default("gpt-6.1-sol"),
-});
+})
 
-export type EnvConfig = z.infer<typeof envConfigSchema>;
+export type EnvConfig = z.infer<typeof envConfigSchema>

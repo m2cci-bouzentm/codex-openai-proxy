@@ -17,19 +17,25 @@ components; `auth.json` must be mode `0600`. Host-native execution instead
 requires ownership by the native process user.
 
 ### Interactive Authentication
+
 Enter the running container and execute one command:
+
 ```bash
 proxy-auth login
 ```
+
 Interactive menu offers:
+
 1. Codex device-code login (recommended inside container).
 2. Browser login (native host only; rejected inside container because callback is unavailable).
 3. Hidden, field-by-field access/refresh token paste.
 
 For token transfer directly, run:
+
 ```bash
 proxy-auth import
 ```
+
 It asks for access token, refresh token, expiry, and optional ChatGPT account ID
 one by one. Token input is hidden. Access-only and refresh-only transfers work;
 at least one token is required. JSON file/stdin forms remain available only for automation.
@@ -41,6 +47,7 @@ leave refresh blank for access-only; leave account ID blank to derive from JWT.
 Device login explains that Codex prints a URL and one-time code to enter there.
 
 ### Check Status
+
 Inspect credential presence, method, expiration, and account-ID presence without revealing tokens or account identifiers:
 Run `proxy-auth status` inside the container.
 
@@ -257,6 +264,7 @@ read tokens; one provider-routed repeat reported zero, so callers must consume
 actual per-request usage rather than assume every repeat is a hit.
 
 The full real client matrix across Claude Code and OpenCode confirmed:
+
 - Claude Code bare mode exposes exactly 3/3 tools: `Bash`, `Edit`, `Read` (with `Write`, `Glob`, `Grep` unexposed in bare mode).
 - OpenCode exposes 9/9 standard tools: `bash`, `read`, `glob`, `grep`, `apply_patch`, `todowrite`, `skill`, `task`, `webfetch`. In GPT mode OpenCode maps file modifications to `apply_patch` instead of `edit`/`write`.
 - Both `/openai/v1/models` and `/anthropic/v1/models` return all 9/9 catalog IDs (`gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-reserve`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `codex-auto-review`).
