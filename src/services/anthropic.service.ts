@@ -10,7 +10,7 @@ import {
   type ProviderResponse,
   type UpstreamOutputItem,
 } from "../schemas/provider.schema";
-import { ProxyError } from "../errors/proxy-error";
+import { ProxyError, providerMessage, upstreamRejection } from "../errors/proxy-error";
 
 type Block = {type:string; [key:string]:any};
 type CodexStreamEvent = {
@@ -25,6 +25,10 @@ type CodexStreamEvent = {
 const LIMIT = 32 * 1024 * 1024;
 export function anthropicError(res:Response,status:number,type:string,message:string) {
   res.status(status).json({type:"error",error:{type,message}});
+}
+function anthropicErrorType(error:ProxyError):string {
+  if(error.status===413)return "request_too_large";
+  return error.type==="upstream_error"?"api_error":error.type;
 }
 export function anthropicAuth(req:Request,res:Response,next:NextFunction) {
   const key=process.env.API_KEY;
@@ -180,7 +184,12 @@ export async function anthropicMessages(req:Request,res:Response) {
   };
   try {
     const response=await upstream("/codex/responses",prepared.native,req,scope.signal,prepared.native.prompt_cache_key);
-    if(!response.ok){await boundedBody(response);const retry=response.headers.get("retry-after");if(retry)res.setHeader("retry-after",retry);anthropicError(res,response.status,response.status===429?"rate_limit_error":response.status===401?"authentication_error":"api_error","Codex upstream rejected request");return;}
+    if(!response.ok){
+      const rejection=upstreamRejection("Codex",response.status,providerMessage((await boundedBody(response)).toString("utf8")),response.headers.get("retry-after"));
+      if(rejection.retryAfter)res.setHeader("retry-after",rejection.retryAfter);
+      anthropicError(res,rejection.status,anthropicErrorType(rejection),rejection.message);
+      return;
+    }
     if(response.headers.get("content-type")?.includes("application/json")) {
       const data=JSON.parse((await boundedBody(response)).toString());const message=result(data,prepared,[]);
       if(!req.body.stream){res.json(message);return;}

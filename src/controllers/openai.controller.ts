@@ -3,6 +3,7 @@ import { upstream, boundedBody } from "../lib/codex-client";
 import { requestScope } from "../utils/abort";
 import { modelsResponseSchema } from "../schemas/provider.schema";
 import { executeChatCompletion } from "../services/openai.service";
+import { providerMessage, upstreamRejection } from "../errors/proxy-error";
 
 export async function listModels(req: Request, res: Response): Promise<void> {
   const scope = requestScope(res);
@@ -12,7 +13,9 @@ export async function listModels(req: Request, res: Response): Promise<void> {
     const response = await upstream("/codex/models?" + query, undefined, req, scope.signal);
     const buffer = await boundedBody(response);
     if (!response.ok) {
-      res.status(response.status).type("application/json").send(buffer);
+      const rejection = upstreamRejection("Codex", response.status, providerMessage(buffer.toString("utf8")), response.headers.get("retry-after"));
+      if (rejection.retryAfter) res.setHeader("Retry-After", rejection.retryAfter);
+      res.status(rejection.status).json({ error: { message: rejection.message, type: rejection.type } });
       return;
     }
     const rawPayload = JSON.parse(buffer.toString());

@@ -12,7 +12,7 @@ import {
   type ProviderResponse,
   type UpstreamOutputItem,
 } from "../schemas/provider.schema";
-import { ProxyError } from "../errors/proxy-error";
+import { ProxyError, providerMessage, upstreamRejection } from "../errors/proxy-error";
 
 export function prepareChat(rawBody: any) {
   const parsed = chatCompletionRequestSchema.safeParse(rawBody);
@@ -158,7 +158,9 @@ export async function executeChatCompletion(req: Request, res: Response): Promis
     const upstreamResp = await upstream("/codex/responses", prepared.native, req, scope.signal, prepared.native.prompt_cache_key);
     if (!upstreamResp.ok) {
       const buffer = await boundedBody(upstreamResp);
-      res.status(upstreamResp.status).type("application/json").send(buffer);
+      const rejection = upstreamRejection("Codex", upstreamResp.status, providerMessage(buffer.toString("utf8")), upstreamResp.headers.get("retry-after"));
+      if (rejection.retryAfter) res.setHeader("Retry-After", rejection.retryAfter);
+      res.status(rejection.status).json({ error: { message: rejection.message, type: rejection.type } });
       return;
     }
     const buffer = await boundedBody(upstreamResp, () => scope.reset?.());
