@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-const { runStatus, runImport, runLogin, runTokenWizardImport } = require('../dist/cli.js');
+const { runStatus, runImport, runLogin, runTokenWizardImport, requireLoginBinary } = require("../dist/cli.js")
 
 function usage(exitCode = 1) {
   process.stderr.write(`Usage: proxy-auth <command> [options]
@@ -19,90 +19,122 @@ Interactive token fields:
   Account ID example: acct_example123; leave blank to derive from JWT
 Device-code login prints a URL and one-time code. Open that URL on any device,
 enter the code, then return here; credentials save automatically.
-`);
-  process.exit(exitCode);
+`)
+  process.exit(exitCode)
 }
 
 function askLine(prompt, hidden = false) {
   return new Promise((resolve, reject) => {
-    if (!process.stdin.isTTY || !process.stderr.isTTY || typeof process.stdin.setRawMode !== 'function') {
-      reject(new Error("Interactive setup requires a TTY; use 'import --file <path>' or 'import -' for automation"));
-      return;
+    if (!process.stdin.isTTY || !process.stderr.isTTY || typeof process.stdin.setRawMode !== "function") {
+      reject(new Error("Interactive setup requires a TTY; use 'import --file <path>' or 'import -' for automation"))
+      return
     }
-    process.stderr.write(prompt);
-    const previousRaw = process.stdin.isRaw;
-    let value = '';
+    process.stderr.write(prompt)
+    const previousRaw = process.stdin.isRaw
+    let value = ""
     const cleanup = () => {
-      process.stdin.off('data', onData);
-      process.stdin.setRawMode(previousRaw);
-      process.stdin.pause();
-    };
-    const finish = () => { cleanup(); process.stderr.write('\n'); resolve(value); };
+      process.stdin.off("data", onData)
+      process.stdin.setRawMode(previousRaw)
+      process.stdin.pause()
+    }
+    const finish = () => {
+      cleanup()
+      process.stderr.write("\n")
+      resolve(value)
+    }
     const onData = (chunk) => {
       for (const ch of String(chunk)) {
-        if (ch === '\r' || ch === '\n') { finish(); return; }
-        if (ch === '\u0003') { cleanup(); process.stderr.write('\n'); reject(new Error('Cancelled')); return; }
-        if (ch === '\u007f' || ch === '\b') {
-          if (value) { value = value.slice(0, -1); if (!hidden) process.stderr.write('\b \b'); }
-          continue;
+        if (ch === "\r" || ch === "\n") {
+          finish()
+          return
         }
-        if (ch >= ' ') { value += ch; if (!hidden) process.stderr.write(ch); }
+        if (ch === "\u0003") {
+          cleanup()
+          process.stderr.write("\n")
+          reject(new Error("Cancelled"))
+          return
+        }
+        if (ch === "\u007f" || ch === "\b") {
+          if (value) {
+            value = value.slice(0, -1)
+            if (!hidden) process.stderr.write("\b \b")
+          }
+          continue
+        }
+        if (ch >= " ") {
+          value += ch
+          if (!hidden) process.stderr.write(ch)
+        }
       }
-    };
-    process.stdin.setEncoding('utf8');
-    process.stdin.setRawMode(true);
-    process.stdin.resume();
-    process.stdin.on('data', onData);
-  });
+    }
+    process.stdin.setEncoding("utf8")
+    process.stdin.setRawMode(true)
+    process.stdin.resume()
+    process.stdin.on("data", onData)
+  })
 }
 
 async function tokenWizard() {
-  process.stderr.write('\nPaste Codex credentials. Values are saved to /data/auth.json.\nTokens stay hidden; leave either token blank if unavailable.\n');
-  const access = await askLine('Access token (hidden; example: eyJ...; blank for refresh-only): ', true);
-  const refresh = await askLine('Refresh token (hidden; example: <opaque-refresh-token>; blank for access-only): ', true);
-  if (!access.trim() && !refresh.trim()) throw new Error('At least one access or refresh token is required');
-  const expires = await askLine('Expiry (example: 2026-10-05T15:24:26Z or epoch; blank = derive JWT/refresh now): ');
-  const accountId = await askLine('ChatGPT account ID (example: acct_example123; blank = derive from JWT): ');
-  return runTokenWizardImport({ access, refresh, expires, accountId });
+  process.stderr.write(
+    "\nPaste Codex credentials. Values are saved to /data/auth.json.\nTokens stay hidden; leave either token blank if unavailable.\n",
+  )
+  const access = await askLine("Access token (hidden; example: eyJ...; blank for refresh-only): ", true)
+  const refresh = await askLine(
+    "Refresh token (hidden; example: <opaque-refresh-token>; blank for access-only): ",
+    true,
+  )
+  if (!access.trim() && !refresh.trim()) throw new Error("At least one access or refresh token is required")
+  const expires = await askLine("Expiry (example: 2026-10-05T15:24:26Z or epoch; blank = derive JWT/refresh now): ")
+  const accountId = await askLine("ChatGPT account ID (example: acct_example123; blank = derive from JWT): ")
+  return runTokenWizardImport({ access, refresh, expires, accountId })
 }
 
 async function interactiveLogin() {
-  process.stderr.write('\nCodex authentication\n  1) Device-code login (recommended in container)\n  2) Browser login (native host only)\n  3) Paste access/refresh tokens\n');
-  const choice = await askLine('Choose [1-3]: ');
-  if (choice === '1') return runLogin({ browser: false });
-  if (choice === '2') return runLogin({ browser: true });
-  if (choice === '3') return tokenWizard();
-  throw new Error('Invalid choice');
+  process.stderr.write(
+    "\nCodex authentication\n  1) Device-code login (recommended in container)\n  2) Browser login (native host only)\n  3) Paste access/refresh tokens\n",
+  )
+  const choice = await askLine("Choose [1-3]: ")
+  if (choice === "1") return runLogin({ browser: false })
+  if (choice === "2") return runLogin({ browser: true })
+  if (choice === "3") return tokenWizard()
+  throw new Error("Invalid choice")
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  const command = args[0];
-  if (!command || ['--help', '-h', 'help'].includes(command)) usage(command ? 0 : 1);
-  let status;
-  if (command === 'status') {
-    if (args.length !== 1) throw new Error('status accepts no options');
-    status = runStatus();
-  } else if (command === 'import') {
-    let source = '';
+  const args = process.argv.slice(2)
+  const command = args[0]
+  if (!command || ["--help", "-h", "help"].includes(command)) usage(command ? 0 : 1)
+  let status
+  if (command === "status") {
+    if (args.length !== 1) throw new Error("status accepts no options")
+    status = runStatus()
+  } else if (command === "import") {
+    let source = ""
     for (let i = 1; i < args.length; i++) {
-      if (args[i] === '--file' && args[i + 1]) { source = args[++i]; }
-      else if (args[i] === '-') source = '-';
-      else throw new Error(`Unknown import option: ${args[i]}`);
+      if (args[i] === "--file" && args[i + 1]) {
+        source = args[++i]
+      } else if (args[i] === "-") source = "-"
+      else throw new Error(`Unknown import option: ${args[i]}`)
     }
-    status = source ? runImport(source) : await tokenWizard();
-  } else if (command === 'login') {
-    let mode;
+    status = source ? runImport(source) : await tokenWizard()
+  } else if (command === "login") {
+    requireLoginBinary()
+    let mode
     for (const arg of args.slice(1)) {
-      if (arg === '--browser') mode = 'browser';
-      else if (arg === '--device') mode = 'device';
-      else throw new Error(`Unknown login option: ${arg}`);
+      if (arg === "--browser") mode = "browser"
+      else if (arg === "--device") mode = "device"
+      else throw new Error(`Unknown login option: ${arg}`)
     }
-    status = mode ? runLogin({ browser: mode === 'browser' }) : await interactiveLogin();
+    status = mode ? runLogin({ browser: mode === "browser" }) : await interactiveLogin()
   } else {
-    throw new Error(`Unknown command: ${command}`);
+    throw new Error(`Unknown command: ${command}`)
   }
-  process.stdout.write(JSON.stringify({ ...(command === 'status' ? {} : { success: true }), ...status }, null, 2) + '\n');
+  process.stdout.write(
+    JSON.stringify({ ...(command === "status" ? {} : { success: true }), ...status }, null, 2) + "\n",
+  )
 }
 
-main().catch((err) => { process.stderr.write(`Error: ${err.message}\n`); process.exit(1); });
+main().catch((err) => {
+  process.stderr.write(`Error: ${err.message}\n`)
+  process.exit(1)
+})

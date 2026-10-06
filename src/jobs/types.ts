@@ -1,9 +1,9 @@
 export interface JobConfig {
-  name: string;
-  schedule: string;
+  name: string
+  schedule: string
 }
 
 export interface Job {
-  config: JobConfig;
-  run: () => Promise<void>;
+  config: JobConfig
+  run: () => Promise<void>
 }

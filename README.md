@@ -17,19 +17,25 @@ components; `auth.json` must be mode `0600`. Host-native execution instead
 requires ownership by the native process user.
 
 ### Interactive Authentication
+
 Enter the running container and execute one command:
+
 ```bash
 proxy-auth login
 ```
+
 Interactive menu offers:
+
 1. Codex device-code login (recommended inside container).
 2. Browser login (native host only; rejected inside container because callback is unavailable).
 3. Hidden, field-by-field access/refresh token paste.
 
 For token transfer directly, run:
+
 ```bash
 proxy-auth import
 ```
+
 It asks for access token, refresh token, expiry, and optional ChatGPT account ID
 one by one. Token input is hidden. Access-only and refresh-only transfers work;
 at least one token is required. JSON file/stdin forms remain available only for automation.
@@ -41,6 +47,7 @@ leave refresh blank for access-only; leave account ID blank to derive from JWT.
 Device login explains that Codex prints a URL and one-time code to enter there.
 
 ### Check Status
+
 Inspect credential presence, method, expiration, and account-ID presence without revealing tokens or account identifiers:
 Run `proxy-auth status` inside the container.
 
@@ -156,6 +163,20 @@ It neither deploys nor modifies permanent Claude Code config.
   `max_completion_tokens`, and `max_output_tokens` map to upstream output limits.
   Other unlisted OpenAI parameters are not guaranteed.
 
+## System prompt contract
+
+Codex is the permissive case: OpenAI allows third-party clients on Codex subscriptions and does not
+filter client identity text, so this proxy injects **no fixed system prompt**.
+
+- `/openai/v1`: client `system`/`developer` messages become the Codex `instructions` field
+  unchanged (joined in order). When a client sends none, `instructions` is
+  `You are a helpful assistant.` because Codex requires a non-empty value.
+- `/anthropic`: Anthropic `system` maps to the same `instructions` field.
+
+Sister proxies: `agy-openai-proxy` and `claude-ai-proxy` (`/openai/v1`) keep their official client
+prompt as the only system content and move client instructions into the first user turn;
+`claude-ai-proxy` `/anthropic` is a pure pass-through.
+
 ## Architecture & Shared Contract
 
 Canonical layers match Claude proxy so provider adapters can eventually live in one repository:
@@ -243,6 +264,7 @@ read tokens; one provider-routed repeat reported zero, so callers must consume
 actual per-request usage rather than assume every repeat is a hit.
 
 The full real client matrix across Claude Code and OpenCode confirmed:
+
 - Claude Code bare mode exposes exactly 3/3 tools: `Bash`, `Edit`, `Read` (with `Write`, `Glob`, `Grep` unexposed in bare mode).
 - OpenCode exposes 9/9 standard tools: `bash`, `read`, `glob`, `grep`, `apply_patch`, `todowrite`, `skill`, `task`, `webfetch`. In GPT mode OpenCode maps file modifications to `apply_patch` instead of `edit`/`write`.
 - Both `/openai/v1/models` and `/anthropic/v1/models` return all 9/9 catalog IDs (`gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-reserve`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `codex-auto-review`).
@@ -265,3 +287,12 @@ verification covered text, function-tool roundtrip, image input, live model
 discovery and 7040 cached input tokens. Current script exercises those supported
 endpoints only; native Codex routes and CLI checks were removed.
 Cache routing is upstream-controlled; every repeated request need not hit cache.
+
+## Development
+
+Shared with the sibling proxies (`agy-openai-proxy`, `claude-ai-proxy`, `codex-openai-proxy`) so they can merge later:
+
+- Style follows OpenCode: Prettier 3.6.2 (`semi: false`, `printWidth: 120`) and oxlint 1.60.0, type-aware.
+- `npm run lint`, `npm run format:check`, `npm run typecheck`, `npm test`.
+- `src/schemas/contracts.schema.ts`, `src/errors/proxy-error.ts`, `src/lib/require-binary.ts`, the tool configs and `tests/architecture-contract.test.cjs` are byte-identical across the three repos; the architecture test pins their hashes.
+- `proxy-auth login` checks for the official client binary first and aborts with install instructions when it is missing.
