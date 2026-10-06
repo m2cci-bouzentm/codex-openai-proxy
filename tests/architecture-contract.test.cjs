@@ -8,7 +8,7 @@ const path = require("node:path")
 const root = path.resolve(__dirname, "..")
 
 const sharedFiles = {
-  "src/schemas/contracts.schema.ts": "99b8fa7967ce4ffc9aa237d36c3d8cf54fcc2e5eda3c7ed56687011f4853d88d",
+  "src/schemas/contracts.schema.ts": "4c2e5cc172aaf1d72e47183417afb18911ea09fc08983606fd7f12dd3a350c33",
   "src/errors/proxy-error.ts": "e6fba4d6109500d058b71c4b59de4bca5966e5fbf6a7cd03fbbb5976bec94006",
   "src/lib/require-binary.ts": "c247b686dcff51f09f5f3f81a6bd6a1492a7e430b52764ec909907a504d5710c",
   ".oxlintrc.json": "7fc9edffe3d35b3183ef3008dd329f47b251dcd09ce8b12c305b94750fbc9a5f",

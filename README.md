@@ -287,3 +287,12 @@ verification covered text, function-tool roundtrip, image input, live model
 discovery and 7040 cached input tokens. Current script exercises those supported
 endpoints only; native Codex routes and CLI checks were removed.
 Cache routing is upstream-controlled; every repeated request need not hit cache.
+
+## Development
+
+Shared with the sibling proxies (`agy-openai-proxy`, `claude-ai-proxy`, `codex-openai-proxy`) so they can merge later:
+
+- Style follows OpenCode: Prettier 3.6.2 (`semi: false`, `printWidth: 120`) and oxlint 1.60.0, type-aware.
+- `npm run lint`, `npm run format:check`, `npm run typecheck`, `npm test`.
+- `src/schemas/contracts.schema.ts`, `src/errors/proxy-error.ts`, `src/lib/require-binary.ts`, the tool configs and `tests/architecture-contract.test.cjs` are byte-identical across the three repos; the architecture test pins their hashes.
+- `proxy-auth login` checks for the official client binary first and aborts with install instructions when it is missing.

@@ -157,7 +157,7 @@ export const canonicalOAuthContractSchema = z
 export const authStatusContractSchema = z.object({
   configured: z.boolean(),
   type: z.literal("oauth").nullable(),
-  provider: z.enum(["openai", "claude"]),
+  provider: z.enum(["openai", "claude", "google"]),
   expiresAt: z.string().nullable(),
   isExpired: z.boolean(),
   accessPresent: z.boolean(),
