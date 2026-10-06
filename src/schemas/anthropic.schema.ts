@@ -38,11 +38,24 @@ const anthropicToolResultPart = z.object({
   is_error: z.boolean().optional(),
 });
 
+const anthropicThinkingPart = z.object({
+  type: z.literal("thinking"),
+  thinking: z.string(),
+  signature: z.string().optional(),
+});
+
+const anthropicRedactedThinkingPart = z.object({
+  type: z.literal("redacted_thinking"),
+  data: z.string(),
+});
+
 export const anthropicContentPart = z.union([
   anthropicTextPart,
   anthropicImagePart,
   anthropicToolUsePart,
   anthropicToolResultPart,
+  anthropicThinkingPart,
+  anthropicRedactedThinkingPart,
 ]);
 
 export const anthropicMessageSchema = z.object({

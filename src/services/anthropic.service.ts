@@ -56,8 +56,10 @@ export function prepareAnthropic(body:any,sessionHeader?:string) {
   }
   if(!body || typeof body.model!=="string" || !body.model || !Number.isInteger(body.max_tokens) || body.max_tokens<=0 || !Array.isArray(body.messages) || !body.messages.length)throw new Error("Invalid Messages request");
   if(body.stream!==undefined && typeof body.stream!=="boolean")throw new Error("Invalid stream option");
-  if(body.thinking && body.thinking.type!=="disabled")throw new Error("Anthropic thinking is not supported by Codex; disable it");
+  // Codex reasons natively: Anthropic `thinking` is accepted and its effort hint mapped.
   if(body.stop_sequences?.length || body.output_config?.format || body.container || body.mcp_servers?.length)throw new Error("Unsupported Messages option");
+  const requestedEffort=body.output_config?.effort;
+  const effort=["low","medium","high","xhigh","max"].includes(requestedEffort)?requestedEffort:(process.env.ANTHROPIC_REASONING_EFFORT || "low");
   const messages:any[]=[];
   const system=body.system===undefined?"":textBlocks(body.system);
   if(system)messages.push({role:"system",content:system});
@@ -74,6 +76,8 @@ export function prepareAnthropic(body:any,sessionHeader?:string) {
       else if(block.type==="tool_result" && message.role==="user" && typeof block.tool_use_id==="string") {
         const output=block.content===undefined?"":textBlocks(block.content);
         messages.push({role:"tool",tool_call_id:block.tool_use_id,content:block.is_error===true?`[tool_error]\n${output}`:output});
+      } else if((block.type==="thinking" || block.type==="redacted_thinking") && message.role==="assistant") {
+        // Anthropic reasoning blocks have no Codex representation.
       } else throw new Error("Unsupported content block");
     }
     if(content.length || calls.length)messages.push({role:message.role,content:message.role==="assistant"?content.map(p=>p.text).join("\n"):content,...(calls.length?{tool_calls:calls}:{})});
@@ -93,7 +97,7 @@ export function prepareAnthropic(body:any,sessionHeader?:string) {
   }
   const identity=sessionHeader || body.metadata?.user_id || "anonymous";
   const cache=crypto.createHash("sha256").update(JSON.stringify([identity,system,tools])).digest("hex");
-  const prepared=prepareChat({model:body.model,messages,tools,tool_choice:choice,prompt_cache_key:cache,reasoning_effort:process.env.ANTHROPIC_REASONING_EFFORT || "low"});
+  const prepared=prepareChat({model:body.model,messages,tools,tool_choice:choice,prompt_cache_key:cache,reasoning_effort:effort});
   if(body.tool_choice?.disable_parallel_tool_use===true)prepared.native.parallel_tool_calls=false;
   return prepared;
 }

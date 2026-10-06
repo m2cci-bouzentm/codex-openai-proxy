@@ -69,6 +69,8 @@ export function prepareChat(rawBody: any) {
       continue;
     }
     if (message.role === "assistant") {
+      // Native Responses order: reasoning items precede the calls they produced.
+      if (message.reasoning_details?.length) input.push(...message.reasoning_details);
       if (message.tool_calls?.length) {
         for (const call of message.tool_calls) {
           if (call.type !== "function" || !call.function?.name) throw new ProxyError("Invalid tool call", 400);
@@ -80,10 +82,10 @@ export function prepareChat(rawBody: any) {
           catch { throw new ProxyError("Invalid historical tool arguments", 400); }
           const validator = validators.get(call.function.name);
           if (validator && !validator(args)) throw new ProxyError("Historical tool arguments failed schema", 400);
-          input.push({ type: "function_call", id: call.id, call_id: call.id, name: call.function.name, arguments: call.function.arguments });
+          // Codex item ids must start with "fc"; the client's id is the call_id.
+          input.push({ type: "function_call", ...(call.id.startsWith("fc") ? { id: call.id } : {}), call_id: call.id, name: call.function.name, arguments: call.function.arguments });
         }
       }
-      if (message.reasoning_details?.length) input.push(...message.reasoning_details);
       if (message.content) {
         const text = typeof message.content === "string" ? message.content : (message.content as any[]).map((p: any) => p.text).join("");
         if (text) input.push({ role: "assistant", content: [{ type: "output_text", text }] });
