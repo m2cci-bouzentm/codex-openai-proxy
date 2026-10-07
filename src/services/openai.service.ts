@@ -60,14 +60,24 @@ export function prepareChat(rawBody: any) {
     if (message.role === "tool") {
       if (!pending.has(message.tool_call_id)) throw new ProxyError("Tool response without prior tool call", 400)
       pending.delete(message.tool_call_id)
-      let output = message.content
-      if (Array.isArray(output)) {
-        output = output
+      const rawOutput = message.content
+      const images: any[] = []
+      let output = rawOutput
+      if (Array.isArray(rawOutput)) {
+        output = rawOutput
           .map((part: any) => {
             if (part.type === "text") return part.text
-            if (part.type === "image_url") return `[image: ${part.image_url.url}]`
+            if (part.type === "image_url" && typeof part.image_url?.url === "string") {
+              images.push({
+                type: "input_image",
+                image_url: part.image_url.url,
+                ...(part.image_url.detail ? { detail: part.image_url.detail } : {}),
+              })
+              return "[image attached]"
+            }
             return ""
           })
+          .filter(Boolean)
           .join("\n")
       }
       input.push({
@@ -75,6 +85,7 @@ export function prepareChat(rawBody: any) {
         call_id: message.tool_call_id,
         output: typeof output === "string" ? output : JSON.stringify(output),
       })
+      if (images.length) input.push({ role: "user", content: images })
       continue
     }
     if (message.role === "assistant") {

@@ -138,6 +138,45 @@ test("Anthropic clients: native envelopes, incremental tools, cache usage and sa
       })
     ).json()
     assert.equal(data.content[0].text, "HELLO")
+    data = await (
+      await post({
+        ...withTools,
+        messages: [
+          ...body.messages,
+          { role: "assistant", content: [{ type: "tool_use", id: "call_test", name: "echo", input: { text: "ok" } }] },
+          {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "call_test",
+                content: [
+                  { type: "text", text: "screenshot" },
+                  { type: "image", source: { type: "base64", media_type: "image/png", data: "aW1hZ2U=" } },
+                ],
+              },
+            ],
+          },
+        ],
+      })
+    ).json()
+    assert.equal(data.content[0].text, "HELLO")
+    const imageRequest = requests.at(-1).body.input
+    assert.deepEqual(
+      imageRequest.find((item) => item.type === "function_call_output"),
+      {
+        type: "function_call_output",
+        call_id: "call_test",
+        output: "screenshot\n[image attached]",
+      },
+    )
+    assert.deepEqual(
+      imageRequest.find((item) => item.role === "user" && item.content?.[0]?.type === "input_image"),
+      {
+        role: "user",
+        content: [{ type: "input_image", image_url: "data:image/png;base64,aW1hZ2U=" }],
+      },
+    )
     response = await post({ ...withTools, stream: true })
     text = await response.text()
     assert.match(text, /input_json_delta/)
