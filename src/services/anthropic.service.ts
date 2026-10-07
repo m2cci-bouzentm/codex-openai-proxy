@@ -38,15 +38,25 @@ export function anthropicAuth(req: Request, res: Response, next: NextFunction) {
   }
   next()
 }
-function textBlocks(value: any): string {
+function textBlocks(value: unknown): string {
   if (typeof value === "string") return value
   if (!Array.isArray(value)) throw new Error("Expected text blocks")
   return value
-    .map((b: Block) => {
-      if (b.type !== "text" || typeof b.text !== "string") throw new Error("Expected text block")
-      return b.text
+    .map((block: Block) => {
+      if (block.type !== "text" || typeof block.text !== "string") throw new Error("Expected text block")
+      return block.text
     })
     .join("\n")
+}
+
+function toolResultContent(value: unknown): string | Array<Record<string, unknown>> {
+  if (typeof value === "string") return value
+  if (!Array.isArray(value)) throw new Error("Expected tool-result content")
+  return value.map((block: Block) => {
+    if (block.type === "text" && typeof block.text === "string") return { type: "text", text: block.text }
+    if (block.type === "image") return imageBlock(block)
+    throw new Error("Unsupported tool-result content block")
+  })
 }
 function imageBlock(block: Block) {
   const source = block.source
@@ -111,11 +121,16 @@ export function prepareAnthropic(body: any, sessionHeader?: string) {
           function: { name: block.name, arguments: JSON.stringify(block.input) },
         })
       else if (block.type === "tool_result" && message.role === "user" && typeof block.tool_use_id === "string") {
-        const output = block.content === undefined ? "" : textBlocks(block.content)
+        const output = block.content === undefined ? "" : toolResultContent(block.content)
         messages.push({
           role: "tool",
           tool_call_id: block.tool_use_id,
-          content: block.is_error === true ? `[tool_error]\n${output}` : output,
+          content:
+            block.is_error === true
+              ? typeof output === "string"
+                ? `[tool_error]\n${output}`
+                : [{ type: "text", text: "[tool_error]" }, ...output]
+              : output,
         })
       } else if ((block.type === "thinking" || block.type === "redacted_thinking") && message.role === "assistant") {
         // Anthropic reasoning blocks have no Codex representation.

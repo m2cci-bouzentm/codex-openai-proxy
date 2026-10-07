@@ -113,8 +113,7 @@ Choose an ID from `/anthropic/v1/models`. Set `ANTHROPIC_DEFAULT_SONNET_MODEL`,
 IDs if the client uses model aliases or secondary calls. Clear conflicting
 `CLAUDE_CODE_OAUTH_TOKEN`/`ANTHROPIC_AUTH_TOKEN` in that client process.
 
-Limitations: Anthropic thinking/signatures, hosted server tools, documents,
-image-valued tool results, stop sequences, structured-output formats and MCP
+Limitations: Anthropic thinking/signatures, hosted server tools, documents, stop sequences, structured-output formats and MCP
 server blocks are unsupported and rejected. `max_tokens` is validated but NOT
 an enforced output limit because this subscription Responses backend rejects
 `max_output_tokens`; sampling controls are not applied. `cache_control` is
