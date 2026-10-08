@@ -8,6 +8,8 @@ import { openaiRouter } from "./routes/openai"
 import { anthropicRouter } from "./routes/anthropic"
 import { anthropicError } from "./services/anthropic.service"
 import { startJobs } from "./jobs"
+import { resolveModel } from "./config/models"
+import { runtimeLogger } from "./lib/runtime-logger"
 
 export const app = express()
 app.use(cors())
@@ -15,6 +17,15 @@ app.use(cors())
 // Configure body parsers for high-capacity inference endpoints (32mb)
 app.use(["/openai/v1/chat/completions", "/anthropic/v1/messages"], express.json({ limit: "32mb" }))
 app.use(express.json())
+app.use(
+  runtimeLogger({
+    resolveOpenAIModel: resolveModel,
+    resolveAnthropicModel: resolveModel,
+    defaultModel: process.env.DEFAULT_MODEL || "gpt-6.1-sol",
+    openaiDefaultEffort: process.env.REASONING_EFFORT || "high",
+    anthropicDefaultEffort: process.env.ANTHROPIC_REASONING_EFFORT || "low",
+  }),
+)
 
 // Mount routers
 app.use("/health", healthRouter)
