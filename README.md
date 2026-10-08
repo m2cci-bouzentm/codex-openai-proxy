@@ -200,6 +200,8 @@ All inbound OpenAI/Anthropic payloads, environment variables, auth storage files
 
 ## Configuration
 
+Inference requests emit structured `[runtime:start]` and `[runtime:end]` lines with protocol, requested/upstream model, effort, streaming flag, message/tool counts, status, error flag, and duration. Prompts, tool arguments/results, headers, API keys, and tokens are never logged.
+
 - API_KEY: required proxy key.
 - DEFAULT_MODEL: chat fallback `gpt-6.1-sol`; .env.example may override.
 - REASONING_EFFORT: `high` by default.
