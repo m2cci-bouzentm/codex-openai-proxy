@@ -8,7 +8,7 @@ RUN npm run build
 
 FROM node:22-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends wget \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates procps wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Install pinned official @openai/codex CLI
