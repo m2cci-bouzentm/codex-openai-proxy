@@ -90,7 +90,10 @@ export function prepareAnthropic(body: any, sessionHeader?: string) {
   // Codex reasons natively: Anthropic `thinking` is accepted and its effort hint mapped.
   if (body.stop_sequences?.length || body.output_config?.format || body.container || body.mcp_servers?.length)
     throw new Error("Unsupported Messages option")
-  const requestedEffort = body.output_config?.effort
+  const inlineEffort = Array.isArray(body?.messages)
+    ? body.messages.findLast((m: any) => m?.role === "system" && m?.output_config?.effort)?.output_config?.effort
+    : undefined
+  const requestedEffort = body.output_config?.effort ?? inlineEffort
   const effort = ["low", "medium", "high", "xhigh", "max"].includes(requestedEffort)
     ? requestedEffort
     : process.env.ANTHROPIC_REASONING_EFFORT || "low"
@@ -98,7 +101,12 @@ export function prepareAnthropic(body: any, sessionHeader?: string) {
   const system = body.system === undefined ? "" : textBlocks(body.system)
   if (system) messages.push({ role: "system", content: system })
   for (const message of body.messages) {
-    if (!["user", "assistant"].includes(message.role)) throw new Error("Invalid message role")
+    if (!["user", "assistant", "system"].includes(message.role)) throw new Error("Invalid message role")
+    if (message.role === "system") {
+      const sysText = textBlocks(message.content)
+      if (sysText) messages.push({ role: "system", content: sysText })
+      continue
+    }
     const blocks: Block[] =
       typeof message.content === "string" ? [{ type: "text", text: message.content }] : message.content
     if (!Array.isArray(blocks)) throw new Error("Invalid message content")

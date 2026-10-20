@@ -58,10 +58,12 @@ export const anthropicContentPart = z.union([
   anthropicRedactedThinkingPart,
 ])
 
-export const anthropicMessageSchema = z.object({
-  role: z.enum(["user", "assistant"]),
-  content: z.union([z.string(), z.array(anthropicContentPart)]),
-})
+export const anthropicMessageSchema = z
+  .object({
+    role: z.enum(["user", "assistant", "system"]),
+    content: z.union([z.string(), z.array(anthropicContentPart)]),
+  })
+  .passthrough()
 
 export const anthropicToolSchema = z.object({
   name: z.string().regex(/^[a-zA-Z0-9_-]{1,64}$/),

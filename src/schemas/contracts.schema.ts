@@ -98,7 +98,7 @@ export const openAIChatRequestContractSchema = z.object({
 
 const anthropicMessageSchema = z
   .object({
-    role: z.enum(["user", "assistant"]),
+    role: z.enum(["user", "assistant", "system"]),
     content: z.union([z.string(), z.array(z.record(z.string(), z.unknown()))]),
   })
   .passthrough()
