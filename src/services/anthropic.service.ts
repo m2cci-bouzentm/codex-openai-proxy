@@ -38,16 +38,6 @@ export function anthropicAuth(req: Request, res: Response, next: NextFunction) {
   }
   next()
 }
-function textBlocks(value: unknown): string {
-  if (typeof value === "string") return value
-  if (!Array.isArray(value)) throw new Error("Expected text blocks")
-  return value
-    .map((block: Block) => {
-      if (block.type !== "text" || typeof block.text !== "string") throw new Error("Expected text block")
-      return block.text
-    })
-    .join("\n")
-}
 
 function toolResultContent(value: unknown): string | Array<Record<string, unknown>> {
   if (typeof value === "string") return value
@@ -76,37 +66,15 @@ export function prepareAnthropic(body: any, sessionHeader?: string) {
     const msg = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")
     throw new ProxyError(`Invalid Messages request: ${msg}`, 400)
   }
-  if (
-    !body ||
-    typeof body.model !== "string" ||
-    !body.model ||
-    !Number.isInteger(body.max_tokens) ||
-    body.max_tokens <= 0 ||
-    !Array.isArray(body.messages) ||
-    !body.messages.length
-  )
-    throw new Error("Invalid Messages request")
-  if (body.stream !== undefined && typeof body.stream !== "boolean") throw new Error("Invalid stream option")
   // Codex reasons natively: Anthropic `thinking` is accepted and its effort hint mapped.
-  if (body.stop_sequences?.length || body.output_config?.format || body.container || body.mcp_servers?.length)
+  const data = parsed.data
+  if (data.stop_sequences?.length || data.output_config?.format || data.container || (data as any).mcp_servers?.length)
     throw new Error("Unsupported Messages option")
-  const inlineEffort = Array.isArray(body?.messages)
-    ? body.messages.findLast((m: any) => m?.role === "system" && m?.output_config?.effort)?.output_config?.effort
-    : undefined
-  const requestedEffort = body.output_config?.effort ?? inlineEffort
-  const effort = ["low", "medium", "high", "xhigh", "max"].includes(requestedEffort)
-    ? requestedEffort
-    : process.env.ANTHROPIC_REASONING_EFFORT || "low"
+  const effort = data.output_config?.effort ?? (process.env.ANTHROPIC_REASONING_EFFORT || "low")
   const messages: any[] = []
-  const system = body.system === undefined ? "" : textBlocks(body.system)
+  const system = data.system ?? ""
   if (system) messages.push({ role: "system", content: system })
-  for (const message of body.messages) {
-    if (!["user", "assistant", "system"].includes(message.role)) throw new Error("Invalid message role")
-    if (message.role === "system") {
-      const sysText = textBlocks(message.content)
-      if (sysText) messages.push({ role: "system", content: sysText })
-      continue
-    }
+  for (const message of data.messages) {
     const blocks: Block[] =
       typeof message.content === "string" ? [{ type: "text", text: message.content }] : message.content
     if (!Array.isArray(blocks)) throw new Error("Invalid message content")

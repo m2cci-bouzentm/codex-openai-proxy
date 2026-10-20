@@ -96,12 +96,34 @@ export const openAIChatRequestContractSchema = z.object({
   response_format: z.never().optional(),
 })
 
-const anthropicMessageSchema = z
+const anthropicReasoningEffortSchema = z.enum(["low", "medium", "high", "xhigh", "max"])
+const anthropicOutputConfigSchema = z
   .object({
-    role: z.enum(["user", "assistant", "system"]),
-    content: z.union([z.string(), z.array(z.record(z.string(), z.unknown()))]),
+    effort: anthropicReasoningEffortSchema.optional(),
   })
   .passthrough()
+
+const anthropicMessageSchema = z.discriminatedUnion("role", [
+  z
+    .object({
+      role: z.literal("user"),
+      content: z.union([z.string(), z.array(z.record(z.string(), z.unknown()))]),
+    })
+    .passthrough(),
+  z
+    .object({
+      role: z.literal("assistant"),
+      content: z.union([z.string(), z.array(z.record(z.string(), z.unknown()))]),
+    })
+    .passthrough(),
+  z
+    .object({
+      role: z.literal("system"),
+      content: z.union([z.string(), z.array(z.record(z.string(), z.unknown()))]),
+      output_config: anthropicOutputConfigSchema.optional(),
+    })
+    .passthrough(),
+])
 
 export const anthropicMessagesRequestContractSchema = z
   .object({
@@ -118,6 +140,7 @@ export const anthropicMessagesRequestContractSchema = z
     top_p: z.number().min(0).max(1).optional(),
     top_k: z.number().int().positive().optional(),
     thinking: z.record(z.string(), z.unknown()).optional(),
+    output_config: anthropicOutputConfigSchema.optional(),
   })
   .passthrough()
 
