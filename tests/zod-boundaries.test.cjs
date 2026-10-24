@@ -38,7 +38,7 @@ test("Zod boundary schemas reject malformed/nested/unknown input and validate li
   assert.ok(configSchema.envConfigSchema)
   const parsedConfig = configSchema.envConfigSchema.parse({})
   assert.equal(parsedConfig.PORT, 3033)
-  assert.equal(parsedConfig.CODEX_TIMEOUT_MS, 120000)
+  assert.equal(parsedConfig.CODEX_TIMEOUT_MS, 600000)
 
   // 3. OpenAI request schema
   assert.ok(openaiSchema.chatCompletionRequestSchema)
