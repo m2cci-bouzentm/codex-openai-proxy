@@ -210,7 +210,7 @@ Inference requests emit structured `[runtime:start]` and `[runtime:end]` lines w
 - CODEX_PROXY_HOME: legacy auth-storage fallback; canonical default is `/data`.
 - CODEX_HOME: initial server CLI login source, default `~/.codex`.
 - CODEX_CLIENT_VERSION: OpenAI model discovery version, default `0.157.1`.
-- CODEX_TIMEOUT_MS: `120000`, upstream response idle timeout.
+- CODEX_TIMEOUT_MS: `600000`, upstream response idle timeout, reset on every received chunk.
 - CODEX_UPSTREAM_BASE_URL: server-controlled backend override for local tests.
 
 JSON requests/buffered responses are bounded to 32 MiB. Redirects are rejected;
